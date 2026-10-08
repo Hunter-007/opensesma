@@ -94,5 +94,10 @@ export const DENY_MESSAGES: Record<string, string> = {
 	used_up: 'Pass already used',
 	unknown_code: 'Code not recognised',
 	banned: 'On the estate ban list — refer to supervisor',
-	unit_inactive: 'Household is no longer active'
+	unit_inactive: 'Household is no longer active',
+	locked: 'Keypad locked after too many wrong codes',
+	not_ready: 'Gate phone not set up'
 };
+
+/** Human wording for a stored deny/override reason (deny reasons are stored as codes). */
+export const reasonText = (r: string) => DENY_MESSAGES[r] ?? r;

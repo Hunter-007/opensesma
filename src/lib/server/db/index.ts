@@ -20,15 +20,19 @@ export async function getDb(): Promise<DB> {
 }
 
 async function connect(): Promise<DB> {
-	const url = process.env.DATABASE_URL ?? '';
+	// Netlify DB (Neon) exposes NETLIFY_DATABASE_URL; any other Postgres uses DATABASE_URL.
+	const url = process.env.DATABASE_URL || process.env.NETLIFY_DATABASE_URL || '';
 	if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
 		const postgres = (await import('postgres')).default;
 		const client = postgres(url, { max: 5, prepare: false, idle_timeout: 20 });
 		return drizzlePostgres(client, { schema }) as unknown as DB;
 	}
+	if (!url && process.env.NODE_ENV === 'production')
+		throw new Error('DATABASE_URL is not set. Point it at Postgres (e.g. Netlify DB / Neon), or set DATABASE_URL=pglite://./.data/pglite for a single-server install.');
 	const { PGlite } = await import('@electric-sql/pglite');
 	const { drizzle } = await import('drizzle-orm/pglite');
 	const dataDir = url.startsWith('memory://') ? undefined : url.replace(/^pglite:\/\//, '') || './.data/pglite';
+	if (dataDir) (await import('node:fs')).mkdirSync(dataDir, { recursive: true });
 	const client = new PGlite(dataDir);
 	const db = drizzle(client, { schema }) as unknown as DB;
 	// Embedded databases migrate themselves so `npm run dev` just works.

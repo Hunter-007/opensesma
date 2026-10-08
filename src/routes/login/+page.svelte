@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { formatPhone } from '$lib/shared/phone';
 	let { data, form } = $props();
 	let busy = $state(false);
 	const step = $derived(form?.step === 'code' || (form as { values?: { step?: string } })?.values?.step === 'code' ? 'code' : 'phone');
@@ -31,7 +32,7 @@
 		</form>
 	{:else}
 		<h1>Enter your code</h1>
-		<p class="muted">Sent to {phone}. It expires in 5 minutes.</p>
+		<p class="muted">Sent to {formatPhone(phone)}. It expires in 5 minutes.</p>
 		{#if form && 'devCode' in form && form.devCode}
 			<p class="alert warn">Development mode — your code is <strong>{form.devCode}</strong></p>
 		{/if}
@@ -44,7 +45,7 @@
 					type="text"
 					inputmode="numeric"
 					autocomplete="one-time-code"
-					pattern="\d{6}"
+					pattern={"[0-9]{6}"}
 					maxlength="6"
 					class="otp"
 					required

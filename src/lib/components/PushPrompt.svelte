@@ -35,7 +35,7 @@
 			On iPhone, add OpenSesma to your home screen (Share → Add to Home Screen) to get arrival alerts. Until then we'll text you.
 		</p>
 	</div>
-{:else if status === 'denied'}
+{:else if vapidKey && status === 'denied'}
 	<p class="small muted">Alerts are blocked in your browser settings, so we'll text you about visitors instead.</p>
 {/if}
 

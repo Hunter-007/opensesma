@@ -45,6 +45,7 @@ export class GateEngine {
 		this.guards = (await store.kv.get<SyncGuard[]>('guards')) ?? [];
 		this.bans = (await store.kv.get<SyncBan[]>('bans')) ?? [];
 		this.guard = (await store.kv.get<GuardSession>('guard')) ?? null;
+		this.codeFailures = (await store.kv.get<number[]>('codeFailures')) ?? [];
 		return this;
 	}
 
@@ -197,11 +198,16 @@ export class GateEngine {
 	async checkCode(raw: string, now = new Date()): Promise<CheckResult> {
 		const code = raw.replace(/\D/g, '');
 		if (this.codeLockedFor(now.getTime())) return this.deny('locked', 'code', null, null, 'Too many wrong codes. Wait a minute.');
-		const candidates = (await store.passesByCode(code)).filter((p) => p.status === 'active');
-		// Codes recycle across expired passes; prefer one that is still in its window.
-		const pass = candidates.sort((a, b) => (b.validTo ?? Infinity) - (a.validTo ?? Infinity))[0];
+		// Codes recycle once a pass ends, so several local passes can share one.
+		// Prefer an active pass; otherwise show the most recent cancelled one so
+		// the guard sees "cancelled by the resident" rather than "not recognised".
+		const all = (await store.passesByCode(code)).filter((p) => p.token);
+		const byEnd = (a: LocalPass, b: LocalPass) => (b.validTo ?? Infinity) - (a.validTo ?? Infinity);
+		const pass = all.filter((p) => p.status === 'active').sort(byEnd)[0] ?? all.filter((p) => p.status === 'revoked').sort(byEnd)[0];
 		if (!pass) {
 			this.codeFailures.push(now.getTime());
+			// Persisted so reloading the page doesn't reset the lockout.
+			await store.kv.set('codeFailures', this.codeFailures);
 			const msg = this.isStale(now.getTime())
 				? 'Code not on this phone. The phone has not synced for a while — use Walk-in to ask the resident.'
 				: DENY_MESSAGES.unknown_code;

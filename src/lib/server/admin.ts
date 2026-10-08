@@ -4,7 +4,7 @@ import { AppError, audit, unitLabel } from './util';
 import { localParts } from '../shared/evaluate';
 import { randomId } from '../shared/encoding';
 import { normalisePhone } from '../shared/phone';
-import type { EventKind, EventMethod, PassType } from '../shared/types';
+import { reasonText, type EventKind, type EventMethod, type PassType } from '../shared/types';
 
 export interface LogFilter {
 	from?: Date;
@@ -55,7 +55,7 @@ export function eventsToCsv(rows: Awaited<ReturnType<typeof listEvents>>, timeZo
 	};
 	const header = ['time', 'gate', 'kind', 'method', 'pass_type', 'visitor', 'house', 'guard', 'reason', 'recorded_offline', 'conflict'];
 	const lines = rows.map((r) =>
-		[fmt.format(r.deviceTs), r.gateName, r.kind, r.method, r.passType ?? '', r.visitorName, r.unitLabel, r.guardName, r.reason, r.offline ? 'yes' : 'no', r.conflict ? 'yes' : 'no']
+		[fmt.format(r.deviceTs), r.gateName, r.kind, r.method, r.passType ?? '', r.visitorName, r.unitLabel, r.guardName, reasonText(r.reason), r.offline ? 'yes' : 'no', r.conflict ? 'yes' : 'no']
 			.map(esc)
 			.join(',')
 	);
