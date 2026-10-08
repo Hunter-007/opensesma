@@ -3,9 +3,15 @@
 
 const env = (k: string) => process.env[k] ?? '';
 
+// Vite sets import.meta.env.PROD in the production server bundle. Hosts such as
+// Netlify Functions don't set NODE_ENV=production at runtime, so relying on
+// NODE_ENV alone would run production in development mode (OTPs on screen,
+// /dev/outbox open, insecure cookies). Scripts and tests have no Vite env.
+const builtForProduction = (import.meta as { env?: { PROD?: boolean } }).env?.PROD === true;
+
 export const config = {
 	get isProd() {
-		return process.env.NODE_ENV === 'production';
+		return process.env.NODE_ENV === 'production' || builtForProduction;
 	},
 	get appSecret(): string {
 		const s = env('APP_SECRET');

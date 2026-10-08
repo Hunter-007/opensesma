@@ -1,6 +1,7 @@
 import { drizzle as drizzlePostgres } from 'drizzle-orm/postgres-js';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import * as schema from './schema';
+import { config } from '../config';
 
 export type DB = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -30,7 +31,7 @@ export async function getDb(): Promise<DB> {
 export function databaseKind(): 'postgres' | 'netlify' | 'pglite' | 'none' {
 	if (/^postgres(ql)?:\/\//.test(process.env.DATABASE_URL ?? '')) return 'postgres';
 	if (process.env.NETLIFY_DB_URL || process.env.NETLIFY_DATABASE_URL) return 'netlify';
-	if (process.env.DATABASE_URL || process.env.NODE_ENV !== 'production') return 'pglite';
+	if (process.env.DATABASE_URL || !config.isProd) return 'pglite';
 	return 'none';
 }
 
@@ -54,8 +55,8 @@ async function connect(): Promise<DB> {
 		const client = postgres(url, { max: 5, prepare: false, idle_timeout: 20 });
 		return drizzlePostgres(client, { schema }) as unknown as DB;
 	}
-	if (!url && process.env.NODE_ENV === 'production')
-		throw new Error('No database configured. On Netlify, Netlify Database provides NETLIFY_DB_URL; elsewhere set DATABASE_URL to Postgres, or DATABASE_URL=pglite://./.data/pglite for a single-server install.');
+	if (!url && config.isProd)
+		throw new Error('No database configured. Set DATABASE_URL to the Postgres connection string (on Netlify: Data & Storage → Database → Copy connection string), or DATABASE_URL=pglite://./.data/pglite for a single-server install.');
 	const { PGlite } = await import('@electric-sql/pglite');
 	const { drizzle } = await import('drizzle-orm/pglite');
 	const dataDir = url.startsWith('memory://') ? undefined : url.replace(/^pglite:\/\//, '') || './.data/pglite';
