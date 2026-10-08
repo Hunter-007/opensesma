@@ -1,5 +1,6 @@
 [build]
   command = "npm run netlify:build"
+  # Netlify Database applies netlify/database/migrations/ itself, just before publish.
   publish = "build"
 
 [build.environment]

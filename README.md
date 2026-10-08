@@ -52,7 +52,7 @@ Starting from scratch instead? Skip the seed and open `/setup` to create your es
 ## Deploying to Netlify
 
 1. Push this repo to GitHub and **Add new site → Import from Git** in Netlify. The build settings come from `netlify.toml`.
-2. Add a database: **Extensions → Netlify DB** (Neon Postgres; sets `NETLIFY_DATABASE_URL`) — or set `DATABASE_URL` to any Postgres 14+.
+2. Database: nothing to do. Because `@netlify/database` is installed, Netlify provisions **Netlify Database** (Postgres) on the first deploy and applies `netlify/database/migrations/` just before each deploy is published. Requires a credit-based Netlify plan. (To use your own Postgres instead, set `DATABASE_URL` and run `npm run db:migrate`.)
 3. Set environment variables (Site settings → Environment variables):
 
    | Variable | Value |
@@ -66,7 +66,7 @@ Starting from scratch instead? Skip the seed and open `/setup` to create your es
    | `CRON_SECRET` | Random string; enables the daily data-retention job |
    | `SETUP_TOKEN` | Optional. Lets you open `/setup?token=…` to onboard more estates |
 
-4. Deploy. Migrations run automatically before each build. Open `/setup` to create the first estate.
+4. Deploy, then open `/api/health` — it should say `"db":"ok"`. Open `/setup` to create the first estate.
 
 Self-hosting on a VPS works too: `ADAPTER=node npm run build && node build` (set `ORIGIN`, plus `DATABASE_URL`, or `DATABASE_URL=pglite://./.data/pglite` for a single-server install).
 
@@ -80,9 +80,10 @@ Self-hosting on a VPS works too: `ADAPTER=node npm run build && node build` (set
 ## Development
 
 ```bash
-npm test          # 48 tests: pass engine, server flows on embedded Postgres, gate engine offline
+npm test          # 50 tests: pass engine, server flows on embedded Postgres, gate engine offline
 npm run check     # svelte-check / TypeScript
-npm run db:generate   # after editing src/lib/server/db/schema.ts
+npm run db:generate   # after editing src/lib/server/db/schema.ts — also copies the SQL to netlify/database/migrations/
+                      # never edit or delete a migration once deployed; Netlify rejects it
 ```
 
 ```

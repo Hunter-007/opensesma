@@ -11,16 +11,17 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "drizzle-kit generate && tsx scripts/sync-migrations.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "keys:vapid": "tsx scripts/vapid.ts",
-    "netlify:build": "npm run db:migrate && npm run build"
+    "netlify:build": "vite build"
   },
   "engines": {
     "node": ">=20"
   },
   "devDependencies": {
+    "@netlify/database-dev": "^1.0.1",
     "@sveltejs/adapter-netlify": "^5.2.4",
     "@sveltejs/adapter-node": "^5.5.7",
     "@sveltejs/kit": "^2.70.3",
@@ -39,6 +40,7 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
+    "@netlify/database": "^2.0.1",
     "@noble/curves": "^2.4.0",
     "drizzle-orm": "^0.45.4",
     "papaparse": "^5.7.0",
