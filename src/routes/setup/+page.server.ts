@@ -6,23 +6,27 @@ import { createSession } from '$lib/server/auth';
 import { attempt, setSessionCookie, str } from '$lib/server/guards';
 import { AppError } from '$lib/server/util';
 import { safeEqual } from '$lib/server/crypto';
+import { config } from '$lib/server/config';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
- * Creating an estate is open only on a brand-new install (no estates yet), or
- * with ?token=SETUP_TOKEN so the operator can onboard further estates.
+ * Who may create an estate:
+ * - in production, only someone holding SETUP_TOKEN (?token=…), so the first
+ *   stranger to find a fresh deployment can't claim it;
+ * - in development, anyone on an empty install.
  */
 async function allowed(url: URL) {
 	const token = process.env.SETUP_TOKEN;
 	const given = url.searchParams.get('token') ?? '';
 	if (token && given && safeEqual(token, given)) return true;
+	if (config.isProd) return false;
 	const db = await getDb();
 	const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.estates);
 	return n === 0;
 }
 
 export const load: PageServerLoad = async ({ url }) => {
-	if (!(await allowed(url))) error(403, 'Estate setup is closed. Ask the OpenSesma operator for a setup link.');
+	if (!(await allowed(url))) error(403, 'Estate setup needs a setup link. Ask the OpenSesma operator for one.');
 	return {};
 };
 

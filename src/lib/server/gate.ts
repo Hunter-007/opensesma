@@ -3,10 +3,13 @@ import { getDb, schema } from './db';
 import { randomToken, sha256 } from './crypto';
 import { pushToUsers } from './push';
 import { sendSms } from './sms';
-import { AppError, audit, unitLabel } from './util';
+import { AppError, audit, rateLimit, unitLabel } from './util';
 import { config } from './config';
-import { createPass } from './passes';
+import { createPass, isBanned } from './passes';
 import { humanCode, normaliseHumanCode, randomId } from '../shared/encoding';
+import { peekPass } from '../shared/passToken';
+import { evaluatePass, localDayKey } from '../shared/evaluate';
+import { localToUtc } from '../shared/format';
 import type { DuesStatus, EventKind, EventMethod, LevyRule, PassType, Role } from '../shared/types';
 import { isResidentRole } from '../shared/types';
 import { normalisePhone } from '../shared/phone';
@@ -41,7 +44,7 @@ export async function regenerateEnrollCode(estateId: string, actorUserId: string
 	const db = await getDb();
 	const [device] = await db
 		.update(schema.devices)
-		.set({ enrollCode: humanCode(8), enrollExpiresAt: new Date(Date.now() + ENROLL_HOURS * 3_600_000), tokenHash: null, enrolledAt: null, revokedAt: null })
+		.set({ enrollCode: humanCode(8), enrollExpiresAt: new Date(Date.now() + ENROLL_HOURS * 3_600_000), tokenHash: null, prevTokenHash: null, tokenIssuedAt: null, enrolledAt: null, revokedAt: null })
 		.where(and(eq(schema.devices.id, deviceId), eq(schema.devices.estateId, estateId)))
 		.returning();
 	if (!device) throw new AppError('Device not found', 404);
@@ -53,7 +56,7 @@ export async function revokeDevice(estateId: string, actorUserId: string, device
 	const db = await getDb();
 	await db
 		.update(schema.devices)
-		.set({ revokedAt: new Date(), tokenHash: null, enrollCode: null })
+		.set({ revokedAt: new Date(), tokenHash: null, prevTokenHash: null, enrollCode: null })
 		.where(and(eq(schema.devices.id, deviceId), eq(schema.devices.estateId, estateId)));
 	await audit(db, { estateId, actorUserId, action: 'device.revoke', entity: 'device', entityId: deviceId });
 }
@@ -70,25 +73,74 @@ export async function enrollDevice(rawCode: string) {
 	const token = randomToken();
 	await db
 		.update(schema.devices)
-		.set({ tokenHash: sha256(token), enrolledAt: new Date(), enrollCode: null, enrollExpiresAt: null })
+		.set({ tokenHash: sha256(token), tokenIssuedAt: new Date(), prevTokenHash: null, prevTokenValidUntil: null, enrolledAt: new Date(), enrollCode: null, enrollExpiresAt: null })
 		.where(eq(schema.devices.id, device.id));
 	await audit(db, { estateId: device.estateId, action: 'device.enroll', entity: 'device', entityId: device.id });
 	return { token, deviceId: device.id, estateId: device.estateId, gateId: device.gateId };
 }
 
-export type GateDevice = typeof schema.devices.$inferSelect;
+export type GateDevice = typeof schema.devices.$inferSelect & { presentedPrevious?: boolean };
+
+/** Device tokens rotate on the first sync after this age… */
+const TOKEN_ROTATE_MS = 24 * 3_600_000;
+/** …the previous token keeps working this long, in case the reply carrying the new one was lost… */
+const TOKEN_GRACE_MS = 10 * 60_000;
+/** …and a phone that hasn't synced at all for this long must be set up again. */
+const TOKEN_MAX_AGE_MS = 30 * 86_400_000;
+
+const removed = () => new AppError('This gate phone was removed. Ask the estate manager to set it up again.', 401, 'device_unauthorized');
 
 export async function authDevice(authHeader: string | null): Promise<GateDevice> {
 	const token = authHeader?.match(/^Bearer\s+(.+)$/i)?.[1];
 	if (!token) throw new AppError('Device not enrolled', 401, 'device_unauthorized');
 	const db = await getDb();
-	const [device] = await db
+	const hash = sha256(token);
+	const [current] = await db
 		.select()
 		.from(schema.devices)
-		.where(and(eq(schema.devices.tokenHash, sha256(token)), isNull(schema.devices.revokedAt)))
+		.where(and(eq(schema.devices.tokenHash, hash), isNull(schema.devices.revokedAt)))
 		.limit(1);
-	if (!device) throw new AppError('This gate device was removed. Ask the estate manager to set it up again.', 401, 'device_unauthorized');
-	return device;
+	if (current) {
+		if (current.tokenIssuedAt && Date.now() - current.tokenIssuedAt.getTime() > TOKEN_MAX_AGE_MS) throw removed();
+		return current;
+	}
+	const [previous] = await db
+		.select()
+		.from(schema.devices)
+		.where(and(eq(schema.devices.prevTokenHash, hash), isNull(schema.devices.revokedAt)))
+		.limit(1);
+	if (!previous) throw removed();
+	if (previous.prevTokenValidUntil && previous.prevTokenValidUntil > new Date()) return { ...previous, presentedPrevious: true };
+	// An old token turned up after it was replaced: two copies of this phone's
+	// credentials exist. Stop both and tell the estate manager.
+	await db.update(schema.devices).set({ revokedAt: new Date(), tokenHash: null, prevTokenHash: null }).where(eq(schema.devices.id, previous.id));
+	await audit(db, { estateId: previous.estateId, action: 'device.token_reuse', entity: 'device', entityId: previous.id });
+	await notifyAdmins(previous.estateId, {
+		title: 'Gate phone blocked',
+		body: `“${previous.name}” was used from two places at once, so it has been removed. Set it up again from Admin → Gate phones.`,
+		url: '/admin/devices',
+		tag: `device-${previous.id}`
+	});
+	throw removed();
+}
+
+/** Issue a fresh device token when the current one is a day old (or a lost reply is being retried). */
+async function maybeRotate(device: GateDevice): Promise<string | undefined> {
+	const due = device.presentedPrevious || !device.tokenIssuedAt || Date.now() - device.tokenIssuedAt.getTime() > TOKEN_ROTATE_MS;
+	if (!due) return undefined;
+	const db = await getDb();
+	const token = randomToken();
+	await db
+		.update(schema.devices)
+		.set({
+			tokenHash: sha256(token),
+			tokenIssuedAt: new Date(),
+			// Keep accepting the token the phone actually holds for a few minutes.
+			prevTokenHash: device.presentedPrevious ? device.prevTokenHash : device.tokenHash,
+			prevTokenValidUntil: new Date(Date.now() + TOKEN_GRACE_MS)
+		})
+		.where(eq(schema.devices.id, device.id));
+	return token;
 }
 
 // ---------------------------------------------------------------- sync
@@ -109,20 +161,13 @@ export async function buildSync(
 	if (since) passConds.push(gt(schema.passes.updatedAt, since));
 	else passConds.push(eq(schema.passes.status, 'active'), or(isNull(schema.passes.validTo), gt(schema.passes.validTo, now))!);
 	const passRows = await db.select().from(schema.passes).where(and(...passConds));
+	const movement = await passMovement(passRows.map((p) => p.id), estate.timeZone);
 
-	// Primary residents' phones, so a guard can still call a house when the gate is offline.
-	const primaries = await db
-		.select({ unitId: schema.memberships.unitId, phone: schema.users.phone })
-		.from(schema.memberships)
-		.innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
-		.where(and(eq(schema.memberships.estateId, estate.id), eq(schema.memberships.role, 'resident_primary'), eq(schema.memberships.status, 'active')));
-	const phoneByUnit = new Map(primaries.map((p) => [p.unitId, p.phone]));
 	const units = (await db.select().from(schema.units).where(eq(schema.units.estateId, estate.id))).map((u) => ({
 		id: u.id,
 		label: unitLabel(u),
 		active: u.active,
-		dues: u.duesStatus,
-		phone: phoneByUnit.get(u.id) ?? null
+		dues: u.duesStatus
 	}));
 	units.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
 	const guards = (
@@ -139,17 +184,19 @@ export async function buildSync(
 			.select()
 			.from(schema.bans)
 			.where(and(eq(schema.bans.estateId, estate.id), isNull(schema.bans.removedAt), or(isNull(schema.bans.expiresAt), gt(schema.bans.expiresAt, now))))
-	).map((b) => ({ id: b.id, name: b.name, phone: b.phone, reason: b.reason }));
+	).map((b) => ({ id: b.id, name: b.name, reason: b.reason }));
 
 	const unitsHash = sha256(JSON.stringify(units)).slice(0, 16);
 	const guardsHash = sha256(JSON.stringify(guards)).slice(0, 16);
 	const bansHash = sha256(JSON.stringify(bans)).slice(0, 16);
 
 	await db.update(schema.devices).set({ lastSyncAt: now }).where(eq(schema.devices.id, device.id));
+	const newToken = await maybeRotate(device);
 
 	return {
 		serverTime: now.getTime(),
 		cursor: now.toISOString(),
+		...(newToken ? { newToken } : {}),
 		estate: {
 			id: estate.id,
 			name: estate.name,
@@ -160,20 +207,28 @@ export async function buildSync(
 		},
 		gate: { id: gate.id, name: gate.name },
 		device: { id: device.id, name: device.name },
-		passes: passRows.map((p) => ({
-			id: p.id,
-			code: p.code,
-			token: p.token,
-			unitId: p.unitId,
-			type: p.type,
-			name: p.visitorName,
-			purpose: p.purpose,
-			entriesUsed: p.entriesUsed,
-			maxEntries: p.maxEntries,
-			status: p.status,
-			validTo: p.validTo ? p.validTo.getTime() : null,
-			visitorPhone: p.visitorPhone
-		})),
+		passes: passRows.flatMap((p) => {
+			const claims = peekPass(p.token);
+			if (!claims) return [];
+			const m = movement.get(p.id);
+			return [
+				{
+					id: p.id,
+					code: p.code,
+					claims,
+					unitId: p.unitId,
+					type: p.type,
+					name: p.visitorName,
+					purpose: p.purpose,
+					entriesUsed: p.entriesUsed,
+					entriesToday: m?.today ?? 0,
+					lastMove: m?.last ?? null,
+					maxEntries: p.maxEntries,
+					status: p.status,
+					validTo: p.validTo ? p.validTo.getTime() : null
+				}
+			];
+		}),
 		unitsHash,
 		guardsHash,
 		bansHash,
@@ -181,6 +236,35 @@ export async function buildSync(
 		...(opts.guardsHash !== guardsHash ? { guards } : {}),
 		...(opts.bansHash !== bansHash ? { bans } : {})
 	};
+}
+
+/** Start of "today" in the estate's time zone. */
+function localDayStart(now: Date, timeZone: string): Date {
+	return localToUtc(localDayKey(now, timeZone), '00:00', timeZone) ?? new Date(now.getTime() - 86_400_000);
+}
+
+/** Per pass: entries today across all gates, and whether it was last seen going in or out. */
+async function passMovement(passIds: string[], timeZone: string) {
+	const out = new Map<string, { today: number; last: 'in' | 'out' | null }>();
+	if (!passIds.length) return out;
+	const db = await getDb();
+	const dayStart = localDayStart(new Date(), timeZone);
+	const rows = await db
+		.select({ passId: schema.accessEvents.passId, kind: schema.accessEvents.kind, ts: schema.accessEvents.deviceTs })
+		.from(schema.accessEvents)
+		.where(and(inArray(schema.accessEvents.passId, passIds), gte(schema.accessEvents.deviceTs, new Date(Date.now() - 2 * 86_400_000))))
+		.orderBy(schema.accessEvents.deviceTs);
+	for (const r of rows) {
+		if (!r.passId || r.kind === 'deny') continue;
+		const cur = out.get(r.passId) ?? { today: 0, last: null };
+		if (r.kind === 'exit') cur.last = 'out';
+		else {
+			cur.last = 'in';
+			if (r.ts >= dayStart) cur.today++;
+		}
+		out.set(r.passId, cur);
+	}
+	return out;
 }
 
 // ---------------------------------------------------------------- events
@@ -209,17 +293,26 @@ const NOTIFY_WINDOW_MS = 30 * 60_000;
  * Idempotent: the device may resend a batch after a dropped connection, so
  * events are keyed by their device-generated UUID and duplicates are ignored.
  */
-export async function ingestEvents(device: GateDevice, events: IncomingEvent[]) {
+export async function ingestEvents(device: GateDevice, events: IncomingEvent[], opts: { sentAt?: number } = {}) {
 	if (!Array.isArray(events) || events.length > 500) throw new AppError('Send between 1 and 500 events');
 	const db = await getDb();
 	const accepted: string[] = [];
 	const conflicts: string[] = [];
+	const flagged: string[] = [];
+	// How far the phone's clock is from ours. A phone whose clock was moved can
+	// make expired passes look valid; we correct timestamps and flag the entries.
+	const skew = Number.isFinite(opts.sentAt) ? Date.now() - (opts.sentAt as number) : 0;
+	const skewed = Math.abs(skew) > CLOCK_SKEW_LIMIT_MS;
+	const [estateRow] = await db.select({ timeZone: schema.estates.timeZone }).from(schema.estates).where(eq(schema.estates.id, device.estateId));
+	let unknownCodes = 0;
 	const notify: { unitId: string; kind: EventKind; name: string; method: EventMethod; reason: string; ts: number }[] = [];
 
 	for (const e of events) {
 		if (!UUID_RE.test(e.id) || !KINDS.includes(e.kind) || !METHODS.includes(e.method) || !Number.isFinite(e.deviceTs)) continue;
-		// Guard device clocks drift; clamp obviously wrong timestamps to server time.
-		const ts = Math.abs(e.deviceTs - Date.now()) > 7 * 86_400_000 ? Date.now() : e.deviceTs;
+		// Correct for a wrong phone clock, then clamp anything still absurd.
+		let ts = skewed ? e.deviceTs + skew : e.deviceTs;
+		if (ts > Date.now() + 60_000 || Date.now() - ts > 7 * 86_400_000) ts = Date.now();
+		if (e.kind === 'deny' && e.reason === 'unknown_code') unknownCodes++;
 
 		let unitId = e.unitId ?? null;
 		let passType = e.passType ?? null;
@@ -268,6 +361,18 @@ export async function ingestEvents(device: GateDevice, events: IncomingEvent[]) 
 				await db.update(schema.accessEvents).set({ conflict: true }).where(eq(schema.accessEvents.id, e.id));
 				conflicts.push(e.id);
 			}
+			if (e.kind === 'entry') {
+				// Don't take the gate's word for it: re-check the pass as of the
+				// (corrected) entry time, so a tampered or stale phone is caught.
+				const flag = (await recheckEntry(e.passId, e.id, new Date(ts), estateRow?.timeZone ?? 'Africa/Lagos')) ?? (skewed ? 'clock_skew' : null);
+				if (flag) {
+					await db.update(schema.accessEvents).set({ flag }).where(eq(schema.accessEvents.id, e.id));
+					flagged.push(e.id);
+				}
+			}
+		} else if (e.kind === 'exit' && e.passId) {
+			// So other gates learn the visitor has left.
+			await db.update(schema.passes).set({ updatedAt: new Date() }).where(eq(schema.passes.id, e.passId));
 		}
 		if (e.kind === 'override') {
 			await audit(db, { estateId: device.estateId, actorUserId: e.guardUserId, action: 'gate.override', entity: 'access_event', entityId: e.id, data: { reason: e.reason, visitor: e.visitorName } });
@@ -285,9 +390,67 @@ export async function ingestEvents(device: GateDevice, events: IncomingEvent[]) 
 		}
 	}
 
+	if (flagged.length) {
+		await notifyAdmins(device.estateId, {
+			title: 'Gate entries need review',
+			body: `${flagged.length} entr${flagged.length === 1 ? 'y' : 'ies'} at ${device.name} didn't pass the server's own check (cancelled, expired, outside hours or a wrong phone clock).`,
+			url: '/admin/log?flagged=1',
+			tag: `flagged-${device.id}`
+		});
+	}
+	// Someone reading out guesses at the gate: tell the manager once per 15 minutes.
+	let overThreshold = false;
+	for (let i = 0; i < unknownCodes; i++) {
+		if (!(await rateLimit(`unknown-codes:${device.id}`, UNKNOWN_CODE_ALERT_AT - 1, 15 * 60))) overThreshold = true;
+	}
+	if (overThreshold && (await rateLimit(`unknown-codes-alerted:${device.id}`, 1, 15 * 60))) {
+		await notifyAdmins(device.estateId, {
+			title: 'Many wrong codes at the gate',
+			body: `${device.name} has seen ${UNKNOWN_CODE_ALERT_AT}+ unrecognised codes in 15 minutes. Someone may be guessing codes.`,
+			url: '/admin/log?kind=deny',
+			tag: `guessing-${device.id}`
+		});
+	}
+
 	// Fire-and-forget style, but awaited so serverless functions don't drop them.
 	await Promise.all(notify.map((n) => notifyHousehold(device.estateId, n)));
-	return { accepted, conflicts };
+	return { accepted, conflicts, flagged };
+}
+
+const CLOCK_SKEW_LIMIT_MS = 5 * 60_000;
+const UNKNOWN_CODE_ALERT_AT = 10;
+
+/**
+ * Re-run the gate's decision on the server at the time of entry. Returns a
+ * reason when the server disagrees, or null when the entry was legitimate.
+ * Entry counts exclude this event itself.
+ */
+async function recheckEntry(passId: string, eventId: string, at: Date, timeZone: string): Promise<string | null> {
+	const db = await getDb();
+	const [p] = await db.select().from(schema.passes).where(eq(schema.passes.id, passId));
+	if (!p) return 'unknown_pass';
+	const claims = peekPass(p.token);
+	if (!claims) return 'bad_signature';
+	const prior = await db
+		.select({ kind: schema.accessEvents.kind, ts: schema.accessEvents.deviceTs, id: schema.accessEvents.id })
+		.from(schema.accessEvents)
+		.where(and(eq(schema.accessEvents.passId, passId), lt(schema.accessEvents.deviceTs, at)));
+	const entries = prior.filter((r) => r.id !== eventId && (r.kind === 'entry' || r.kind === 'override'));
+	const dayStart = localDayStart(at, timeZone);
+	const [unit] = await db.select({ active: schema.units.active }).from(schema.units).where(eq(schema.units.id, p.unitId));
+	const decision = evaluatePass(claims, {
+		now: at,
+		estateId: p.estateId,
+		timeZone,
+		entriesUsed: entries.length,
+		entriesToday: entries.filter((r) => r.ts >= dayStart).length,
+		// Cancelled before this entry happened? (Cancelling afterwards is fine.)
+		revoked: p.status === 'revoked' && !!p.revokedAt && p.revokedAt <= at,
+		unitActive: unit?.active ?? false
+	});
+	// Over-capacity is already reported as a double entry.
+	if (decision.allow || decision.reason === 'used_up') return null;
+	return decision.reason;
 }
 
 async function householdUserIds(unitId: string) {
@@ -339,6 +502,8 @@ export async function createWalkin(
 	if (!unit) throw new AppError('Choose the house they are visiting');
 	if (!unit.active) throw new AppError('That house is not active on the estate');
 	const phone = input.visitorPhone ? normalisePhone(input.visitorPhone) : null;
+	if (await isBanned(device.estateId, { name, phone }))
+		throw new AppError('This visitor is on the estate ban list. Refer to your supervisor.', 403, 'banned');
 
 	const [w] = await db
 		.insert(schema.walkinRequests)

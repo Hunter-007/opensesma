@@ -5,7 +5,7 @@
 	const tz = $derived(data.estate.timeZone);
 	const steps = $derived([
 		{ done: data.setup.units > 0, label: 'Add the houses', href: '/admin/units', hint: 'Upload a spreadsheet or add them one by one. Residents get invite links by SMS.' },
-		{ done: data.setup.guards > 0, label: 'Add your guards', href: '/admin/people', hint: 'Each guard gets a 4-digit PIN for the gate phone.' },
+		{ done: data.setup.guards > 0, label: 'Add your guards', href: '/admin/people', hint: 'Each guard gets a 6-digit PIN for the gate phone.' },
 		{ done: data.setup.devices > 0, label: 'Set up the gate phones', href: '/admin/devices', hint: 'One phone per gate. Open /gate on it and enter the setup code.' },
 		{ done: data.setup.residents > 0, label: 'Get residents on board', href: '/admin/settings#join', hint: 'Share the join link in the estate WhatsApp group.' }
 	]);
@@ -38,7 +38,7 @@
 		<a class="tile" href="/admin/log"><span class="n">{data.entriesToday}</span><span class="l">entries today</span></a>
 		<a class="tile" href="/admin/log?view=inside"><span class="n">{data.insideCount}</span><span class="l">visitors inside now</span></a>
 		<a class="tile" class:alert-tile={data.overridesWeek > 0} href="/admin/log?method=override"><span class="n">{data.overridesWeek}</span><span class="l">overrides this week</span></a>
-		<a class="tile" class:alert-tile={data.conflictsWeek > 0} href="/admin/log?conflicts=1"><span class="n">{data.conflictsWeek}</span><span class="l">double entries (offline gates)</span></a>
+		<a class="tile" class:alert-tile={data.conflictsWeek > 0} href="/admin/log?flagged=1"><span class="n">{data.conflictsWeek}</span><span class="l">entries needing review</span></a>
 		<a class="tile" class:alert-tile={data.pendingMembers > 0} href="/admin/people"><span class="n">{data.pendingMembers}</span><span class="l">join requests waiting</span></a>
 		<a class="tile" href="/admin/units?dues=owing"><span class="n">{data.owing}</span><span class="l">houses owing dues</span></a>
 	</section>

@@ -1,6 +1,7 @@
 import type { Handle, HandleServerError } from '@sveltejs/kit';
 import { SESSION_COOKIE, loadSession } from '$lib/server/auth';
 import { AppError } from '$lib/server/util';
+import { config } from '$lib/server/config';
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const token = event.cookies.get(SESSION_COOKIE) ?? null;
@@ -10,6 +11,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	const response = await resolve(event);
 	response.headers.set('X-Frame-Options', 'DENY');
+	response.headers.set('X-Content-Type-Options', 'nosniff');
+	response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+	if (config.isProd) response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
 	return response;
 };
 

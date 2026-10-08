@@ -7,6 +7,8 @@
 	import { PASS_TYPE_LABEL, OVERRIDE_REASONS } from '$lib/shared/types';
 	import { formatTime, relativeTime } from '$lib/shared/format';
 	import { formatPhone } from '$lib/shared/phone';
+	import { PASS_CODE_LENGTH } from '$lib/shared/encoding';
+	import { PIN_LENGTH } from '$lib/shared/pin';
 
 	type View = 'loading' | 'enroll' | 'shift' | 'home' | 'scan' | 'code' | 'result' | 'inside' | 'walkin' | 'waiting' | 'override' | 'removed';
 
@@ -27,6 +29,7 @@
 	let shiftGuard = $state('');
 	let pin = $state('');
 	let pinError = $state('');
+	let pinLock = $state(0);
 	let code = $state('');
 	let result = $state<CheckResult | null>(null);
 	let scanError = $state('');
@@ -151,7 +154,8 @@
 			pull();
 		} else {
 			pin = '';
-			pinError = 'Wrong PIN. Try again.';
+			pinLock = engine.pinLockedFor();
+			pinError = pinLock ? '' : 'Wrong PIN. Try again.';
 			navigator.vibrate?.(200);
 		}
 	}
@@ -302,7 +306,6 @@
 		walk.unitId = id;
 		unitQuery = label;
 	}
-	const selectedUnit = $derived(units.find((u) => u.id === walk.unitId) ?? null);
 </script>
 
 <svelte:head>
@@ -354,12 +357,16 @@
 					<p class="muted">Tap your name.</p>
 					<div class="guards">
 						{#each guards as g (g.id)}
-							<button class="btn block big" onclick={() => (shiftGuard = g.id)}>{g.name}</button>
+							<button class="btn block big" onclick={() => ((shiftGuard = g.id), (pinLock = engine.pinLockedFor()))}>{g.name}</button>
 						{/each}
 					</div>
 				{:else}
 					<p><strong>{guards.find((g) => g.id === shiftGuard)?.name}</strong>, enter your PIN</p>
-					<Keypad length={4} bind:value={pin} onsubmit={startShift} label="PIN" mask />
+					{#if pinLock}
+						<p class="alert error">Too many wrong PINs. Try again in {Math.ceil(pinLock / 60)} minute{pinLock > 60 ? 's' : ''}.</p>
+					{:else}
+						<Keypad length={PIN_LENGTH} bind:value={pin} onsubmit={startShift} label="PIN" mask />
+					{/if}
 					{#if pinError}<p class="alert error">{pinError}</p>{/if}
 					<button class="btn ghost" onclick={() => ((shiftGuard = ''), (pin = ''), (pinError = ''))}>Not me</button>
 				{/if}
@@ -370,7 +377,7 @@
 					<span class="label">Scan QR</span><span class="hint">Visitor shows their pass</span>
 				</button>
 				<button class="big-action code" onclick={() => ((code = ''), (view = 'code'))}>
-					<span class="label">Enter code</span><span class="hint">6 digits, no smartphone needed</span>
+					<span class="label">Enter code</span><span class="hint">8 digits, no smartphone needed</span>
 				</button>
 				<div class="pair">
 					<button class="mid-action" onclick={startWalkin}>
@@ -400,7 +407,7 @@
 		{:else if view === 'code'}
 			<div class="panel stack">
 				<h1 class="center">Enter the visitor's code</h1>
-				<Keypad bind:value={code} onsubmit={submitCode} />
+				<Keypad length={PASS_CODE_LENGTH} bind:value={code} onsubmit={submitCode} />
 				<button class="btn block" onclick={() => (view = 'home')}>Back</button>
 			</div>
 		{:else if view === 'result' && result}
@@ -475,8 +482,7 @@
 				<label class="field"><span>Visitor's phone (optional)</span><input type="tel" inputmode="tel" bind:value={walk.phone} /></label>
 				{#if walkError === 'offline'}
 					<div class="alert warn">
-						No internet at the gate, so the resident can't be asked in the app.
-						{#if selectedUnit?.phone}<br /><a class="btn primary" href="tel:{selectedUnit.phone}">Call {selectedUnit.label} · {formatPhone(selectedUnit.phone)}</a>{/if}
+						No internet at the gate, so the resident can't be asked in the app. Ask the visitor to phone the person they're visiting, or call the estate office.
 					</div>
 				{:else if walkError}
 					<p class="alert error">{walkError}</p>

@@ -2,13 +2,14 @@ import { and, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
 import { getDb, schema } from './db';
 import { estateSecretKey, getEstate } from './estates';
 import { sendSms } from './sms';
-import { AppError, audit, unitLabel } from './util';
+import { AppError, audit, rateLimit, unitLabel } from './util';
 import { config } from './config';
 import { signPass, type PassClaims } from '../shared/passToken';
-import { randomId, sixDigitCode } from '../shared/encoding';
+import { formatCode, passCode, randomId } from '../shared/encoding';
 import { normalisePhone } from '../shared/phone';
 import { formatDateTime, formatSchedule } from '../shared/format';
-import { ESSENTIAL_PASS_TYPES, PASS_TYPE_LABEL, type PassType, type Schedule } from '../shared/types';
+import { ESSENTIAL_PASS_TYPES, PASS_TYPE_LABEL, PER_DAY_CAP, type PassType, type Schedule } from '../shared/types';
+import { matchesBan } from '../shared/evaluate';
 
 export interface CreatePassInput {
 	type: PassType;
@@ -32,6 +33,8 @@ export interface Actor {
 }
 
 const HOUR = 3_600_000;
+/** Each staff profile is an every-day pass, so keep the number per house small and reviewable. */
+export const MAX_STAFF_PER_UNIT = 6;
 
 function validateSchedule(s: Schedule | null | undefined): Schedule | null {
 	if (!s) return null;
@@ -93,7 +96,7 @@ export function resolvePassShape(input: CreatePassInput, settings: { guestWindow
 async function uniqueCode(estateId: string): Promise<string> {
 	const db = await getDb();
 	for (let i = 0; i < 20; i++) {
-		const code = sixDigitCode();
+		const code = passCode();
 		const [hit] = await db
 			.select({ id: schema.passes.id })
 			.from(schema.passes)
@@ -135,6 +138,11 @@ export async function createPass(actor: Actor, input: CreatePassInput) {
 	const visitorPhone = input.visitorPhone ? normalisePhone(input.visitorPhone) : null;
 	if (input.visitorPhone && !visitorPhone) throw new AppError("The visitor's phone number doesn't look right");
 
+	// Banned visitors can't be invited in the first place (checked on the server,
+	// so gate phones no longer need anyone's phone number to enforce bans).
+	if (await isBanned(estate.id, { name: shape.name, phone: visitorPhone }))
+		throw new AppError('This visitor is on the estate ban list. Contact the estate manager.', 403, 'banned');
+
 	const id = randomId(10);
 	const code = await uniqueCode(estate.id);
 	const claims: PassClaims = {
@@ -146,6 +154,7 @@ export async function createPass(actor: Actor, input: CreatePassInput) {
 		validFrom: Math.floor(shape.from.getTime() / 1000),
 		validTo: shape.to ? Math.floor(shape.to.getTime() / 1000) : 0,
 		maxEntries: shape.maxEntries,
+		perDay: PER_DAY_CAP[input.type] ?? 0,
 		schedule: shape.schedule,
 		iat: Math.floor(Date.now() / 1000)
 	};
@@ -174,7 +183,8 @@ export async function createPass(actor: Actor, input: CreatePassInput) {
 
 	await audit(db, { estateId: estate.id, actorUserId: actor.userId, action: 'pass.create', entity: 'pass', entityId: id, data: { type: input.type } });
 
-	if (input.sendSms && visitorPhone) {
+	// Residents can text passes, but not run up the estate's SMS bill.
+	if (input.sendSms && visitorPhone && (await rateLimit(`sms:unit:${unit.id}`, 20, 86_400))) {
 		await sendSms(visitorPhone, shareMessage(pass, estate, unitLabel(unit), { short: true }));
 	}
 	return pass;
@@ -194,6 +204,16 @@ export async function revokePass(estateId: string, actorUserId: string, passId: 
 	return pass;
 }
 
+export async function isBanned(estateId: string, visitor: { name?: string | null; phone?: string | null }) {
+	const db = await getDb();
+	const now = new Date();
+	const bans = await db
+		.select({ name: schema.bans.name, phone: schema.bans.phone })
+		.from(schema.bans)
+		.where(and(eq(schema.bans.estateId, estateId), isNull(schema.bans.removedAt), or(isNull(schema.bans.expiresAt), gt(schema.bans.expiresAt, now))));
+	return matchesBan(visitor, bans);
+}
+
 export const shareUrl = (token: string) => `${config.publicUrl}/p/${token}`;
 
 type PassLike = Pick<typeof schema.passes.$inferSelect, 'type' | 'visitorName' | 'code' | 'token' | 'validFrom' | 'validTo' | 'schedule' | 'maxEntries'>;
@@ -211,13 +231,13 @@ export function shareMessage(
 			? `${formatDateTime(pass.validFrom, estate.timeZone)} – ${formatDateTime(pass.validTo, estate.timeZone)}`
 			: `from ${formatDateTime(pass.validFrom, estate.timeZone)}`;
 	if (opts.short) {
-		return `${estate.name} gate pass for ${unit}. Code: ${pass.code}. Valid ${when}. Show code or QR at the gate: ${shareUrl(pass.token)}`;
+		return `${estate.name} gate pass for ${unit}. Code: ${formatCode(pass.code)}. Valid ${when}. Show code or QR at the gate: ${shareUrl(pass.token)}`;
 	}
 	const lines = [
 		pass.visitorName ? `Hi ${pass.visitorName.split(' ')[0]},` : 'Hello,',
-		`${opts.hostName ? opts.hostName + ' has' : "You've been"} invited you to ${unit}, ${estate.name}.`,
+		`${opts.hostName ? `${opts.hostName} has invited you` : "You've been invited"} to ${unit}, ${estate.name}.`,
 		'',
-		`Gate code: *${pass.code}*`,
+		`Gate code: *${formatCode(pass.code)}*`,
 		`Valid: ${when}`,
 		pass.type === 'event' && pass.maxEntries ? `Group pass for up to ${pass.maxEntries} people` : '',
 		'',
@@ -270,6 +290,11 @@ export async function addStaffProfile(actor: Actor, input: { name: string; phone
 	if (!input.role.trim()) throw new AppError('Choose a role, e.g. Driver');
 	const phone = input.phone ? normalisePhone(input.phone) : null;
 	if (input.phone && !phone) throw new AppError('Phone number looks wrong');
+	const [{ n }] = await db
+		.select({ n: sql<number>`count(*)::int` })
+		.from(schema.staffProfiles)
+		.where(and(eq(schema.staffProfiles.unitId, actor.unitId), eq(schema.staffProfiles.active, true)));
+	if (n >= MAX_STAFF_PER_UNIT) throw new AppError(`A household can have at most ${MAX_STAFF_PER_UNIT} staff. Remove one first.`);
 	const [profile] = await db
 		.insert(schema.staffProfiles)
 		.values({

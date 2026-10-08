@@ -18,7 +18,7 @@ export const load: PageServerLoad = async (event) => {
 	const gates = await db.select({ id: schema.gates.id, name: schema.gates.name }).from(schema.gates).where(eq(schema.gates.estateId, a.estateId));
 	return {
 		view,
-		filter: { from: f.fromDate, to: f.toDate, unit: f.unitId ?? '', gate: f.gateId ?? '', kind: f.kind ?? '', method: f.method ?? '', q: f.q ?? '', conflicts: f.conflictsOnly },
+		filter: { from: f.fromDate, to: f.toDate, unit: f.unitId ?? '', gate: f.gateId ?? '', kind: f.kind ?? '', method: f.method ?? '', q: f.q ?? '', conflicts: f.conflictsOnly, flagged: f.flaggedOnly },
 		page,
 		hasMore: rows.length > PAGE,
 		rows: rows.slice(0, PAGE).map((e) => ({
@@ -33,7 +33,8 @@ export const load: PageServerLoad = async (event) => {
 			guard: e.guardName,
 			reason: e.reason,
 			offline: e.offline,
-			conflict: e.conflict
+			conflict: e.conflict,
+			flag: e.flag
 		})),
 		units: (await listUnits(a.estateId)).map((u) => ({ id: u.id, label: u.label })),
 		gates

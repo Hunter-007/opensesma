@@ -12,7 +12,7 @@
 			</p>
 			<div class="pass" aria-label="Example gate pass">
 				<span class="pass-label">Gate code for 14 Adeyemi Street</span>
-				<span class="plate big">482 916</span>
+				<span class="plate big">4821 9163</span>
 				<span class="pass-meta">Chidi Okafor · today until 10 pm · one entry</span>
 			</div>
 			<div class="cta">

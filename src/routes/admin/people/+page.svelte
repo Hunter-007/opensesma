@@ -29,7 +29,7 @@
 				{#each data.pending as m (m.id)}
 					<li class="stack">
 						<div class="spread">
-							<span><strong>{m.name || formatPhone(m.phone)}</strong> wants to join <strong>{m.unitLabel}</strong></span>
+							<span><strong>{m.name || formatPhone(m.phone)}</strong> wants to join <strong>{m.unitLabel}</strong> as {m.role === 'resident_primary' ? 'head of household' : 'a household member'}</span>
 							<span class="small muted">{relativeTime(m.createdAt)}</span>
 						</div>
 						<p class="small">“{m.proofNote}” · {formatPhone(m.phone)}</p>
@@ -59,7 +59,7 @@
 				<label class="field"><span>Name</span><input name="name" type="text" value={v.name ?? ''} required /></label>
 				<label class="field"><span>Phone</span><input name="phone" type="tel" inputmode="tel" value={v.phone ?? ''} required /></label>
 				{#if role === 'guard'}
-					<label class="field"><span>4-digit PIN</span><input name="pin" type="text" inputmode="numeric" pattern={"[0-9]{4}"} maxlength="4" required />
+					<label class="field"><span>6-digit PIN</span><input name="pin" type="text" inputmode="numeric" pattern={"[0-9]{6}"} maxlength="6" required />
 						<small>The guard types this on the gate phone to start a shift.</small></label>
 				{/if}
 				<div class="row full"><button class="btn primary">Add</button><button type="button" class="btn ghost" onclick={() => (adding = false)}>Cancel</button></div>
@@ -82,7 +82,7 @@
 										{#if pinFor === m.id}
 											<form method="POST" action="?/pin" use:enhance class="row">
 												<input type="hidden" name="membershipId" value={m.id} />
-												<input name="pin" type="text" inputmode="numeric" pattern={"[0-9]{4}"} maxlength="4" placeholder="New PIN" required class="pin" />
+												<input name="pin" type="text" inputmode="numeric" pattern={"[0-9]{6}"} maxlength="6" placeholder="New PIN" required class="pin" />
 												<button class="btn sm primary">Save</button>
 											</form>
 										{:else}

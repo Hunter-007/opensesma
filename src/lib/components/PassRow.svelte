@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { PASS_TYPE_LABEL, type PassType, type Schedule } from '$lib/shared/types';
 	import { formatDateTime, formatSchedule, relativeTime } from '$lib/shared/format';
+	import { formatCode } from '$lib/shared/encoding';
 	let {
 		pass,
 		timeZone
@@ -24,7 +25,7 @@
 <a class="rowlink" href="/app/passes/{pass.id}">
 	<span class="top">
 		<span class="name">{title}</span>
-		<span class="plate">{pass.code}</span>
+		<span class="plate">{formatCode(pass.code)}</span>
 	</span>
 	<span class="meta small muted">
 		{PASS_TYPE_LABEL[pass.type]}{pass.purpose ? ` · ${pass.purpose}` : ''} · {when}{pass.maxEntries > 1 ? ` · ${pass.entriesUsed}/${pass.maxEntries} in` : ''}

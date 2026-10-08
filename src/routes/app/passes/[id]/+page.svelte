@@ -3,6 +3,7 @@
 	import { PASS_TYPE_LABEL } from '$lib/shared/types';
 	import { formatDateTime, formatSchedule } from '$lib/shared/format';
 	import { formatPhone } from '$lib/shared/phone';
+	import { formatCode } from '$lib/shared/encoding';
 	let { data } = $props();
 	const p = $derived(data.pass);
 	const tz = $derived(data.estate.timeZone);
@@ -45,7 +46,7 @@
 		</div>
 		<h1>{p.name || 'Delivery rider'}</h1>
 		{#if p.purpose}<p class="muted">{p.purpose}</p>{/if}
-		<div class="code"><span class="plate">{p.code.slice(0, 3)} {p.code.slice(3)}</span></div>
+		<div class="code"><span class="plate">{formatCode(p.code)}</span></div>
 		<div class="qr" aria-label="QR code for the pass">{@html data.qr}</div>
 		<dl>
 			<dt>Valid</dt>

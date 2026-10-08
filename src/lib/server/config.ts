@@ -50,6 +50,16 @@ export const config = {
 	get devShowOtp() {
 		return !this.isProd && env('DEV_SHOW_OTP') !== 'false';
 	},
+	/** Country calling codes allowed to receive OTPs (comma-separated digits). */
+	get allowedCountryCodes(): string[] {
+		return (env('ALLOWED_COUNTRY_CODES') || '234').split(',').map((s) => s.trim().replace(/^\+/, '')).filter(Boolean);
+	},
+	get otpPerIpPerHour() {
+		return Number(env('OTP_PER_IP_PER_HOUR')) || 10;
+	},
+	get otpGlobalPerHour() {
+		return Number(env('OTP_GLOBAL_PER_HOUR')) || 300;
+	},
 	get cronSecret() {
 		return env('CRON_SECRET');
 	}

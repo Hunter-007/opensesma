@@ -20,6 +20,8 @@ export interface PassClaims {
 	validTo: number;
 	/** 0 = unlimited. */
 	maxEntries: number;
+	/** Entries allowed per calendar day in the estate's time zone; 0 = no daily cap. */
+	perDay: number;
 	schedule: Schedule | null;
 	/** Issued-at, unix seconds. Edits re-issue with a new iat. */
 	iat: number;
@@ -35,6 +37,7 @@ interface WireClaims {
 	f: number;
 	x: number;
 	m: number;
+	d?: number;
 	s?: [number[], string, string];
 	a: number;
 }
@@ -49,6 +52,7 @@ const toWire = (c: PassClaims): WireClaims => ({
 	f: c.validFrom,
 	x: c.validTo,
 	m: c.maxEntries,
+	...(c.perDay ? { d: c.perDay } : {}),
 	...(c.schedule ? { s: [c.schedule.days, c.schedule.start, c.schedule.end] } : {}),
 	a: c.iat
 });
@@ -65,6 +69,7 @@ const fromWire = (w: WireClaims): PassClaims => {
 		validFrom: w.f,
 		validTo: w.x,
 		maxEntries: w.m,
+		perDay: w.d ?? 0,
 		schedule: w.s ? { days: w.s[0], start: w.s[1], end: w.s[2] } : null,
 		iat: w.a
 	};

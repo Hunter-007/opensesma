@@ -170,6 +170,10 @@ export const devices = pgTable('devices', {
 	enrollCode: text('enroll_code').unique(),
 	enrollExpiresAt: ts('enroll_expires_at'),
 	tokenHash: text('token_hash').unique(),
+	/** Tokens rotate daily; the previous one stays valid briefly in case the reply carrying the new one was lost. */
+	tokenIssuedAt: ts('token_issued_at'),
+	prevTokenHash: text('prev_token_hash'),
+	prevTokenValidUntil: ts('prev_token_valid_until'),
 	enrolledAt: ts('enrolled_at'),
 	revokedAt: ts('revoked_at'),
 	lastSyncAt: ts('last_sync_at'),
@@ -197,6 +201,8 @@ export const accessEvents = pgTable(
 		offline: boolean('offline').notNull().default(false),
 		/** Set on sync when two offline gates admitted the same limited pass. */
 		conflict: boolean('conflict').notNull().default(false),
+		/** Set on upload when the server's own check disagrees with the gate (e.g. 'revoked', 'clock_skew'). */
+		flag: text('flag'),
 		deviceTs: ts('device_ts').notNull(),
 		serverTs: ts('server_ts').notNull().defaultNow()
 	},

@@ -15,7 +15,8 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "keys:vapid": "tsx scripts/vapid.ts",
-    "netlify:build": "vite build"
+    "netlify:build": "vite build",
+    "secrets:rotate": "tsx scripts/rotate-secret.ts"
   },
   "engines": {
     "node": ">=20"

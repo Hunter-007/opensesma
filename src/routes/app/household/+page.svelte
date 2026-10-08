@@ -4,6 +4,7 @@
 	import { ROLE_LABEL } from '$lib/shared/types';
 	import { formatPhone } from '$lib/shared/phone';
 	import { formatSchedule } from '$lib/shared/format';
+	import { formatCode } from '$lib/shared/encoding';
 	let { data, form } = $props();
 	let addingStaff = $state(false);
 	let addingMember = $state(false);
@@ -64,7 +65,7 @@
 							<span class="small muted">{s.schedule ? formatSchedule(s.schedule) : 'No active pass'}</span>
 						</span>
 						<span class="row">
-							{#if s.passId}<a href="/app/passes/{s.passId}" class="plate">{s.code}</a>{/if}
+							{#if s.passId}<a href="/app/passes/{s.passId}" class="plate">{formatCode(s.code ?? "")}</a>{/if}
 							<form method="POST" action="?/removeStaff" use:enhance>
 								<input type="hidden" name="profileId" value={s.id} />
 								<button class="btn sm ghost danger">Remove</button>

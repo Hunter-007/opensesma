@@ -12,7 +12,28 @@ const config = {
 	kit: {
 		adapter,
 		serviceWorker: { register: false }, // registered manually so we control update prompts
-		csrf: { trustedOrigins: [] }
+		csrf: { trustedOrigins: [] },
+		// Content-Security-Policy. SvelteKit hashes its own inline scripts (mode auto),
+		// so no inline script from anywhere else can run. blob: workers are for the
+		// QR scanner; blob: media is the camera preview.
+		csp: {
+			mode: 'auto',
+			directives: {
+				'default-src': ['self'],
+				'script-src': ['self'],
+				'style-src': ['self', 'unsafe-inline'],
+				'img-src': ['self', 'data:', 'blob:'],
+				'font-src': ['self'],
+				'connect-src': ['self'],
+				'worker-src': ['self', 'blob:'],
+				'media-src': ['self', 'blob:'],
+				'manifest-src': ['self'],
+				'frame-ancestors': ['none'],
+				'base-uri': ['self'],
+				'form-action': ['self'],
+				'object-src': ['none']
+			}
+		}
 	}
 };
 

@@ -3,6 +3,7 @@ import webpush from 'web-push';
 import { config } from './config';
 import { getDb, schema } from './db';
 import { randomId } from '../shared/encoding';
+import { AppError } from './util';
 
 export interface PushPayload {
 	title: string;
@@ -27,15 +28,31 @@ const ready = () => {
 
 export const pushEnabled = () => !!config.vapid.publicKey && !!config.vapid.privateKey;
 
+/** Browser push services. Anything else would make our server call an arbitrary host. */
+const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^updates\.push\.services\.mozilla\.com$/, /(^|\.)push\.apple\.com$/, /(^|\.)notify\.windows\.com$/];
+
+export function isAllowedPushEndpoint(endpoint: string): boolean {
+	try {
+		const u = new URL(endpoint);
+		return u.protocol === 'https:' && !u.port && PUSH_HOSTS.some((re) => re.test(u.hostname));
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Store a browser's push subscription. A subscription already registered to a
+ * different person is never moved — otherwise anyone who learned that address
+ * could redirect someone else's alerts to themselves. The browser just makes a
+ * fresh subscription instead (see enablePush).
+ */
 export async function saveSubscription(userId: string, sub: { endpoint: string; keys: { p256dh: string; auth: string } }) {
+	if (!isAllowedPushEndpoint(sub.endpoint)) throw new AppError('Unsupported push service', 400, 'push_endpoint');
 	const db = await getDb();
-	await db
-		.insert(schema.pushSubscriptions)
-		.values({ id: randomId(), userId, endpoint: sub.endpoint, p256dh: sub.keys.p256dh, auth: sub.keys.auth })
-		.onConflictDoUpdate({
-			target: schema.pushSubscriptions.endpoint,
-			set: { userId, p256dh: sub.keys.p256dh, auth: sub.keys.auth }
-		});
+	const [existing] = await db.select().from(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.endpoint, sub.endpoint));
+	if (existing && existing.userId !== userId) throw new AppError('This browser is registered to someone else', 409, 'push_taken');
+	if (existing) return;
+	await db.insert(schema.pushSubscriptions).values({ id: randomId(), userId, endpoint: sub.endpoint, p256dh: sub.keys.p256dh, auth: sub.keys.auth });
 }
 
 /** Returns how many devices accepted the message (0 means: fall back to SMS). */

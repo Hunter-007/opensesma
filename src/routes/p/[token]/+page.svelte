@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { formatPhone } from '$lib/shared/phone';
+	import { formatCode } from '$lib/shared/encoding';
 	let { data } = $props();
 </script>
 
@@ -25,7 +25,7 @@
 	<section class="pass">
 		<div class="qr">{@html data.qr}</div>
 		<p class="or">or tell the guard this code</p>
-		<p class="plate">{data.code.slice(0, 3)} {data.code.slice(3)}</p>
+		<p class="plate">{formatCode(data.code)}</p>
 	</section>
 
 	<dl>
@@ -38,9 +38,6 @@
 		{#if data.directions}<dt>Directions</dt><dd>{data.directions}</dd>{/if}
 	</dl>
 
-	{#if data.hostPhone}
-		<a class="call" href="tel:{data.hostPhone}">Call {data.hostName ? data.hostName.split(' ')[0] : 'your host'} · {formatPhone(data.hostPhone)}</a>
-	{/if}
 	<p class="foot">Gate passes by OpenSesma</p>
 </main>
 
@@ -111,18 +108,6 @@
 	}
 	dd {
 		margin: 0;
-	}
-	.call {
-		display: block;
-		text-align: center;
-		padding: 14px;
-		border-radius: 10px;
-		border: 1px solid var(--line);
-		background: var(--card);
-		font-weight: 600;
-		text-decoration: none;
-		color: var(--ink);
-		margin-top: 16px;
 	}
 	.foot {
 		text-align: center;

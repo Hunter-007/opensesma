@@ -21,11 +21,16 @@ export async function enablePush(vapidKey: string): Promise<PushState> {
 	if (permission !== 'granted') return permission === 'denied' ? 'denied' : 'off';
 	const reg = (await navigator.serviceWorker.getRegistration()) ?? (await navigator.serviceWorker.register('/service-worker.js', { type: 'module' }));
 	await navigator.serviceWorker.ready;
-	const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlToBytes(vapidKey) as BufferSource });
-	const res = await fetch('/api/push/subscribe', {
-		method: 'POST',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify(sub.toJSON())
-	});
+	const subscribe = () => reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlToBytes(vapidKey) as BufferSource });
+	const send = (s: PushSubscription) =>
+		fetch('/api/push/subscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(s.toJSON()) });
+	let sub = await subscribe();
+	let res = await send(sub);
+	if (res.status === 409) {
+		// This browser's subscription belongs to whoever used it before: get a fresh one.
+		await sub.unsubscribe();
+		sub = await subscribe();
+		res = await send(sub);
+	}
 	return res.ok ? 'on' : 'off';
 }

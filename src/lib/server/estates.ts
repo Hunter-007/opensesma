@@ -108,6 +108,7 @@ export async function addUnit(estateId: string, street: string, number: string) 
 }
 
 export async function setDuesStatus(estateId: string, actorUserId: string, unitId: string, status: 'paid' | 'owing' | 'unknown', note = '') {
+	if (!['paid', 'owing', 'unknown'].includes(status)) throw new AppError('Choose paid, owing or not set');
 	const db = await getDb();
 	await db
 		.update(schema.units)
@@ -183,6 +184,14 @@ export async function commitHouseholdImport(estateId: string, actorUserId: strin
 
 export async function createInvite(input: { estateId: string; unitId: string | null; phone: string | null; name: string; role: Role; createdBy: string }) {
 	const db = await getDb();
+	// Never trust a house ID from a form: it must belong to this estate.
+	if (input.unitId) {
+		const [unit] = await db
+			.select({ id: schema.units.id })
+			.from(schema.units)
+			.where(and(eq(schema.units.id, input.unitId), eq(schema.units.estateId, input.estateId)));
+		if (!unit) throw new AppError('House not found on this estate', 404, 'not_found');
+	}
 	const [invite] = await db
 		.insert(schema.invites)
 		.values({
@@ -250,9 +259,15 @@ export async function requestToJoin(estateId: string, unitId: string, userId: st
 	const [unit] = await db.select().from(schema.units).where(and(eq(schema.units.id, unitId), eq(schema.units.estateId, estateId))).limit(1);
 	if (!unit) throw new AppError('Choose your house from the list');
 	if (name.trim()) await db.update(schema.users).set({ name: name.trim() }).where(eq(schema.users.id, userId));
+	// If the house already has a head of household, a newcomer joins as a member,
+	// so a hasty approval can't hand a stranger control of someone's household.
+	const [head] = await db
+		.select({ id: schema.memberships.id })
+		.from(schema.memberships)
+		.where(and(eq(schema.memberships.unitId, unitId), eq(schema.memberships.role, 'resident_primary'), eq(schema.memberships.status, 'active')));
 	await db
 		.insert(schema.memberships)
-		.values({ id: randomId(), userId, estateId, unitId, role: 'resident_primary', status: 'pending', proofNote })
+		.values({ id: randomId(), userId, estateId, unitId, role: head ? 'resident_sub' : 'resident_primary', status: 'pending', proofNote: proofNote.slice(0, 500) })
 		.onConflictDoNothing();
 	await audit(db, { estateId, actorUserId: userId, action: 'membership.request', entity: 'unit', entityId: unitId, data: { proofNote } });
 }
@@ -331,8 +346,15 @@ export async function addStaffAccount(input: {
 	const db = await getDb();
 	const phone = normalisePhone(input.phone);
 	if (!phone) throw new AppError('Enter a valid phone number');
-	if (input.role === 'guard' && (!input.pin || !isValidPin(input.pin))) throw new AppError('Guards need a 4-digit PIN');
+	if (input.role === 'guard' && (!input.pin || !isValidPin(input.pin))) throw new AppError('Guards need a 6-digit PIN');
 	const user = await upsertUser(phone, input.name.trim());
+	// Don't silently turn a resident into staff: that would drop them from their house.
+	const [existing] = await db
+		.select({ role: schema.memberships.role, status: schema.memberships.status })
+		.from(schema.memberships)
+		.where(and(eq(schema.memberships.userId, user.id), eq(schema.memberships.estateId, input.estateId)));
+	if (existing && existing.status !== 'disabled' && isResidentRole(existing.role))
+		throw new AppError('That phone number belongs to a resident of this estate. Use a different number for staff accounts.', 409, 'is_resident');
 	const pinHash = input.pin ? await hashPin(input.pin) : null;
 	await db
 		.insert(schema.memberships)
@@ -346,7 +368,7 @@ export async function addStaffAccount(input: {
 }
 
 export async function resetGuardPin(estateId: string, actorUserId: string, membershipId: string, pin: string) {
-	if (!isValidPin(pin)) throw new AppError('PIN must be 4 digits');
+	if (!isValidPin(pin)) throw new AppError('PIN must be 6 digits');
 	const db = await getDb();
 	await db
 		.update(schema.memberships)

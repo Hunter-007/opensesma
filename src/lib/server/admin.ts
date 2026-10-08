@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, inArray, isNotNull, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { getDb, schema } from './db';
 import { AppError, audit, unitLabel } from './util';
 import { localParts } from '../shared/evaluate';
@@ -16,6 +16,7 @@ export interface LogFilter {
 	passType?: PassType;
 	q?: string;
 	conflictsOnly?: boolean;
+	flaggedOnly?: boolean;
 	limit?: number;
 	offset?: number;
 }
@@ -31,6 +32,7 @@ export async function listEvents(estateId: string, f: LogFilter) {
 	if (f.method) conds.push(eq(schema.accessEvents.method, f.method));
 	if (f.passType) conds.push(eq(schema.accessEvents.passType, f.passType));
 	if (f.conflictsOnly) conds.push(eq(schema.accessEvents.conflict, true));
+	if (f.flaggedOnly) conds.push(or(isNotNull(schema.accessEvents.flag), eq(schema.accessEvents.conflict, true))!);
 	if (f.q) {
 		const like = `%${f.q.replace(/[%_]/g, '')}%`;
 		conds.push(or(ilike(schema.accessEvents.visitorName, like), ilike(schema.accessEvents.guardName, like), ilike(schema.accessEvents.reason, like))!);
@@ -50,12 +52,15 @@ export async function listEvents(estateId: string, f: LogFilter) {
 export function eventsToCsv(rows: Awaited<ReturnType<typeof listEvents>>, timeZone: string): string {
 	const fmt = new Intl.DateTimeFormat('en-GB', { timeZone, dateStyle: 'short', timeStyle: 'medium' });
 	const esc = (v: unknown) => {
-		const s = String(v ?? '');
-		return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+		let s = String(v ?? '');
+		// Spreadsheets run cells that start with these as formulas; a leading
+		// apostrophe makes Excel/Sheets show the text instead (CSV injection).
+		if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+		return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 	};
-	const header = ['time', 'gate', 'kind', 'method', 'pass_type', 'visitor', 'house', 'guard', 'reason', 'recorded_offline', 'conflict'];
+	const header = ['time', 'gate', 'kind', 'method', 'pass_type', 'visitor', 'house', 'guard', 'reason', 'recorded_offline', 'conflict', 'flag'];
 	const lines = rows.map((r) =>
-		[fmt.format(r.deviceTs), r.gateName, r.kind, r.method, r.passType ?? '', r.visitorName, r.unitLabel, r.guardName, reasonText(r.reason), r.offline ? 'yes' : 'no', r.conflict ? 'yes' : 'no']
+		[fmt.format(r.deviceTs), r.gateName, r.kind, r.method, r.passType ?? '', r.visitorName, r.unitLabel, r.guardName, reasonText(r.reason), r.offline ? 'yes' : 'no', r.conflict ? 'yes' : 'no', r.flag ? reasonText(r.flag) : '']
 			.map(esc)
 			.join(',')
 	);
@@ -84,7 +89,7 @@ export async function dashboard(estateId: string, timeZone: string) {
 	const [entriesToday, overridesWeek, conflictsWeek, deniedToday] = await Promise.all([
 		count(gte(schema.accessEvents.deviceTs, startOfDay), inArray(schema.accessEvents.kind, ['entry', 'override'])),
 		count(gte(schema.accessEvents.deviceTs, weekAgo), eq(schema.accessEvents.kind, 'override')),
-		count(gte(schema.accessEvents.deviceTs, weekAgo), eq(schema.accessEvents.conflict, true)),
+		count(gte(schema.accessEvents.deviceTs, weekAgo), or(eq(schema.accessEvents.conflict, true), isNotNull(schema.accessEvents.flag))!),
 		count(gte(schema.accessEvents.deviceTs, startOfDay), eq(schema.accessEvents.kind, 'deny'))
 	]);
 	const inside = await insideNow(estateId);

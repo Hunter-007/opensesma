@@ -9,7 +9,7 @@ export type Decision =
 	| { allow: true; warnings: string[] }
 	| {
 			allow: false;
-			reason: 'wrong_estate' | 'revoked' | 'not_yet' | 'expired' | 'outside_hours' | 'used_up' | 'banned' | 'unit_inactive';
+			reason: 'wrong_estate' | 'revoked' | 'not_yet' | 'expired' | 'outside_hours' | 'used_up' | 'daily_limit' | 'banned' | 'unit_inactive';
 	  };
 
 export interface EvaluateContext {
@@ -17,6 +17,10 @@ export interface EvaluateContext {
 	estateId: string;
 	timeZone: string;
 	entriesUsed: number;
+	/** Entries already made today (estate local day). Needed for passes with a daily cap. */
+	entriesToday?: number;
+	/** The pass was last seen entering and hasn't been checked out (one person, one pass). */
+	inside?: boolean;
 	revoked: boolean;
 	banned?: boolean;
 	unitActive?: boolean;
@@ -42,6 +46,11 @@ export const toMinutes = (hhmm: string) => {
 	return h * 60 + m;
 };
 
+/** "2026-10-12" for a moment in the estate's time zone; used to count entries per day. */
+export function localDayKey(date: Date, timeZone: string): string {
+	return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+}
+
 export function withinSchedule(schedule: Schedule, date: Date, timeZone: string): boolean {
 	const { day, minutes } = localParts(date, timeZone);
 	const start = toMinutes(schedule.start);
@@ -65,8 +74,11 @@ export function evaluatePass(claims: PassClaims, ctx: EvaluateContext): Decision
 	if (claims.schedule && !withinSchedule(claims.schedule, ctx.now, ctx.timeZone))
 		return { allow: false, reason: 'outside_hours' };
 	if (claims.maxEntries > 0 && ctx.entriesUsed >= claims.maxEntries) return { allow: false, reason: 'used_up' };
+	if (claims.perDay > 0 && (ctx.entriesToday ?? 0) >= claims.perDay) return { allow: false, reason: 'daily_limit' };
 
 	const warnings: string[] = [];
+	// A personal pass already inside is the classic sign of a shared code.
+	if (ctx.inside && claims.type !== 'event') warnings.push('This pass is already inside and was not checked out — check the person carefully');
 	if (ctx.duesOwingWarning) warnings.push('Household is owing estate dues');
 	if (claims.maxEntries > 1) warnings.push(`${claims.maxEntries - ctx.entriesUsed} of ${claims.maxEntries} entries left`);
 	return { allow: true, warnings };

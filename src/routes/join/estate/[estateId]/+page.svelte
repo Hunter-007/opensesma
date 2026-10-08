@@ -1,5 +1,6 @@
 <script lang="ts">
 	let { data, form } = $props();
+	const v = $derived(((form as { values?: Record<string, string> } | null)?.values ?? {}) as Record<string, string>);
 </script>
 
 <svelte:head><title>Request to join · OpenSesma</title></svelte:head>
@@ -17,13 +18,19 @@
 				<span>Your name</span>
 				<input name="name" type="text" autocomplete="name" value={data.name} required />
 			</label>
-			<label class="field">
-				<span>Your house</span>
-				<select name="unitId" required>
-					<option value="">Choose your house</option>
-					{#each data.units as u}<option value={u.id}>{u.label}</option>{/each}
-				</select>
-			</label>
+			<div class="two">
+				<label class="field">
+					<span>Street</span>
+					<select name="street" required>
+						<option value="">Choose your street</option>
+						{#each data.streets as st}<option value={st} selected={v.street === st}>{st}</option>{/each}
+					</select>
+				</label>
+				<label class="field">
+					<span>House number</span>
+					<input name="number" type="text" inputmode="numeric" value={v.number ?? ''} required />
+				</label>
+			</div>
 			<label class="field">
 				<span>How can the manager confirm you live there?</span>
 				<textarea name="proof" placeholder="e.g. New tenant since September, tenancy agreement with Mr Okeke (landlord)" required></textarea>
@@ -36,6 +43,11 @@
 </main>
 
 <style>
+	.two {
+		display: grid;
+		grid-template-columns: 2fr 1fr;
+		gap: 12px;
+	}
 	.shell {
 		padding-top: 32px;
 		padding-bottom: 40px;

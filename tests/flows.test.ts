@@ -94,7 +94,7 @@ Okafor Close,2,Chidi Nwosu,08031112224`;
 
 describe('PRD 2 + 3 — passes verified at the gate', () => {
 	beforeAll(async () => {
-		await estates.addStaffAccount({ estateId, actorUserId: adminId, phone: '08077777777', name: 'Sunday (Guard)', role: 'guard', pin: '4321' });
+		await estates.addStaffAccount({ estateId, actorUserId: adminId, phone: '08077777777', name: 'Sunday (Guard)', role: 'guard', pin: '432198' });
 		const d1 = await gate.createDevice(estateId, adminId, gate1, 'Main gate phone');
 		const d2 = await gate.createDevice(estateId, adminId, gate2, 'Back gate phone');
 		const e1 = await gate.enrollDevice(d1.enrollCode!.toLowerCase());
@@ -115,11 +115,11 @@ describe('PRD 2 + 3 — passes verified at the gate', () => {
 		expect(sync.estate.publicKey).toBeTruthy();
 		expect(sync.units!.length).toBe(2);
 		expect(sync.guards![0].name).toBe('Sunday (Guard)');
-		expect(await verifyPin('4321', sync.guards![0].pinHash)).toBe(true);
+		expect(await verifyPin('432198', sync.guards![0].pinHash)).toBe(true);
 		const cached = sync.passes.find((x) => x.code === p.code)!;
-		const v = verifyPass(cached.token, sync.estate.publicKey);
-		expect(v.ok).toBe(true);
-		if (v.ok) expect(evaluatePass(v.claims, { now: new Date(), estateId, timeZone: 'Africa/Lagos', entriesUsed: 0, revoked: false }).allow).toBe(true);
+		expect(evaluatePass(cached.claims, { now: new Date(), estateId, timeZone: 'Africa/Lagos', entriesUsed: 0, revoked: false }).allow).toBe(true);
+		// The real QR (held by the visitor) still verifies against the estate key.
+		expect(verifyPass(p.token, sync.estate.publicKey).ok).toBe(true);
 
 		// Delta sync with unchanged hashes returns no reference data.
 		const delta = await gate.buildSync(device1, { since: sync.cursor, unitsHash: sync.unitsHash, guardsHash: sync.guardsHash, bansHash: sync.bansHash });
@@ -182,7 +182,7 @@ describe('PRD 2 + 3 — passes verified at the gate', () => {
 		const first = await gate.buildSync(device1, {});
 		await admin.addBan(estateId, adminId, { name: 'Musa Ibrahim', phone: '08012345678', reason: 'Former driver, theft' });
 		const delta = await gate.buildSync(device1, { since: first.cursor, bansHash: first.bansHash });
-		expect(delta.bans?.[0].phone).toBe('+2348012345678');
+		expect(delta.bans?.[0].name).toBe('Musa Ibrahim');
 	});
 });
 
@@ -191,7 +191,7 @@ describe('PRD 2 — pass rules', () => {
 		const p = await passes.createPass({ userId: residentId, estateId, unitId }, { type: 'delivery' });
 		expect(p.maxEntries).toBe(1);
 		expect(Math.round((p.validTo!.getTime() - p.validFrom.getTime()) / 3_600_000)).toBe(2);
-		expect(p.code).toMatch(/^\d{6}$/);
+		expect(p.code).toMatch(/^\d{8}$/);
 	});
 
 	it('requires a capacity and end time for event passes', async () => {
@@ -218,7 +218,8 @@ describe('PRD 2 — pass rules', () => {
 		const p = await passes.createPass({ userId: residentId, estateId, unitId }, { type: 'guest', visitorName: 'Kemi Ade' });
 		const estate = await estates.getEstate(estateId);
 		const msg = passes.shareMessage(p, estate, '14 Adeyemi Street');
-		expect(msg).toContain(p.code);
+		expect(msg).toContain(`${p.code.slice(0, 4)} ${p.code.slice(4)}`);
+		expect(msg).toContain("You've been invited to 14 Adeyemi Street");
 		expect(msg).toContain('Hi Kemi');
 		expect(msg).toContain('/p/');
 	});
@@ -239,7 +240,7 @@ describe('PRD 4 — walk-in approval', () => {
 		const status = await gate.pollWalkin(device1, w.id);
 		expect(status.status).toBe('approved');
 		expect(status.decidedByName).toBe('Bello');
-		expect(status.pass?.code).toMatch(/^\d{6}$/);
+		expect(status.pass?.code).toMatch(/^\d{8}$/);
 	});
 });
 

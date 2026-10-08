@@ -45,7 +45,7 @@ Demo accounts (OTP codes appear on screen in development; every SMS is visible a
 | --- | --- | --- |
 | Estate manager | 0803 000 0001 | `/admin` |
 | Resident, 14 Adeyemi St | 0803 000 0002 | `/app` |
-| Guards | — | Open `/gate`, enter the setup code printed by the seed, pick **Sunday Okon** (PIN `1234`) |
+| Guards | — | Open `/gate`, enter the setup code printed by the seed, pick **Sunday Okon** (PIN `123456`) |
 
 Starting from scratch instead? Skip the seed and open `/setup` to create your estate.
 
@@ -64,15 +64,17 @@ Starting from scratch instead? Skip the seed and open `/setup` to create your es
    | `TERMII_CHANNEL` | `dnd` so OTPs reach DND-enabled numbers |
    | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | `npm run keys:vapid` |
    | `CRON_SECRET` | Random string; enables the daily data-retention job |
-   | `SETUP_TOKEN` | Optional. Lets you open `/setup?token=…` to onboard more estates |
+   | `SETUP_TOKEN` | Required to create an estate in production: open `/setup?token=…` |
+   | `ALLOWED_COUNTRY_CODES` | Optional, default `234`. Countries that can receive login codes |
+   | `OTP_PER_IP_PER_HOUR`, `OTP_GLOBAL_PER_HOUR` | Optional, defaults 10 and 300. SMS-cost protection |
 
-4. Deploy, then open `/api/health` — it should say `"db":"ok"`. Open `/setup` to create the first estate.
+4. Deploy, then open `/api/health` — it should say `{"ok":true}` (add `Authorization: Bearer <CRON_SECRET>` for details). Open `/setup?token=<SETUP_TOKEN>` to create the first estate.
 
 Self-hosting on a VPS works too: `ADAPTER=node npm run build && node build` (set `ORIGIN`, plus `DATABASE_URL`, or `DATABASE_URL=pglite://./.data/pglite` for a single-server install).
 
 ## Setting up a gate
 
-1. Admin → **People** → add each guard with a 4-digit PIN.
+1. Admin → **People** → add each guard with a 6-digit PIN.
 2. Admin → **Gate phones** → *Add a phone* for each gate. Note the setup code.
 3. On the gate phone (Android 8+, Chrome): open `https://<your-site>/gate`, add it to the home screen, enter the setup code.
 4. Keep it on a power bank. It works without data; it only needs a connection now and then to receive new passes and send its log.
@@ -80,7 +82,7 @@ Self-hosting on a VPS works too: `ADAPTER=node npm run build && node build` (set
 ## Development
 
 ```bash
-npm test          # 50 tests: pass engine, server flows on embedded Postgres, gate engine offline
+npm test          # 96 tests, including a regression test for every security finding: pass engine, server flows on embedded Postgres, gate engine offline
 npm run check     # svelte-check / TypeScript
 npm run db:generate   # after editing src/lib/server/db/schema.ts — also copies the SQL to netlify/database/migrations/
                       # never edit or delete a migration once deployed; Netlify rejects it

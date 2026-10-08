@@ -16,6 +16,7 @@ export function parseLogFilter(url: URL, timeZone: string): LogFilter & { fromDa
 		kind: (p.get('kind') as EventKind) || undefined,
 		method: (p.get('method') as EventMethod) || undefined,
 		q: p.get('q') || undefined,
-		conflictsOnly: p.get('conflicts') === '1'
+		conflictsOnly: p.get('conflicts') === '1',
+		flaggedOnly: p.get('flagged') === '1'
 	};
 }

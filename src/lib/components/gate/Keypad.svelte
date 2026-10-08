@@ -20,7 +20,7 @@
 <div class="pad">
 	<div class="display" aria-label={label} aria-live="polite">
 		{#each Array(length) as _, i}
-			<span class="slot" class:filled={i < value.length}>{i < value.length ? (mask ? '•' : value[i]) : ''}</span>
+			<span class="slot" class:split={length === 8 && i === 4} class:filled={i < value.length}>{i < value.length ? (mask ? '•' : value[i]) : ''}</span>
 		{/each}
 	</div>
 	<div class="keys">
@@ -40,11 +40,13 @@
 	}
 	.display {
 		display: flex;
-		gap: 6px;
+		gap: 4px;
 		justify-content: center;
 	}
 	.slot {
-		width: 44px;
+		flex: 1 1 0;
+		max-width: 44px;
+		min-width: 0;
 		height: 60px;
 		display: grid;
 		place-items: center;
@@ -54,6 +56,9 @@
 		border-radius: 6px;
 		background: var(--card);
 		border: 2px solid var(--line);
+	}
+	.slot.split {
+		margin-left: 10px;
 	}
 	.slot.filled {
 		background: var(--plate);

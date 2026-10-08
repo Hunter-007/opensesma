@@ -21,9 +21,23 @@ function otpCode(): string {
 }
 
 /** Sends a login OTP. Returns the code itself only in development (DEV_SHOW_OTP). */
-export async function requestOtp(rawPhone: string): Promise<{ phone: string; devCode?: string }> {
+export async function requestOtp(rawPhone: string, ctx: { ip?: string } = {}): Promise<{ phone: string; devCode?: string }> {
 	const phone = normalisePhone(rawPhone);
 	if (!phone) throw new AppError('Enter a valid phone number, e.g. 0803 123 4567');
+	// SMS pumping defence: only countries the estate operates in, and limits per
+	// sender IP and across the whole service, not just per destination number.
+	if (!config.allowedCountryCodes.some((cc) => phone.startsWith('+' + cc)))
+		throw new AppError('Sign-in is only available for Nigerian phone numbers', 400, 'country_not_allowed');
+	if (ctx.ip) {
+		if (!(await rateLimit(`otp:ip:h:${ctx.ip}`, config.otpPerIpPerHour, 3600)))
+			throw new AppError('Too many sign-in attempts from this network. Try again later', 429, 'rate_limited');
+		if (!(await rateLimit(`otp:ip:d:${ctx.ip}`, config.otpPerIpPerHour * 4, 86_400)))
+			throw new AppError('Too many sign-in attempts from this network. Try again tomorrow', 429, 'rate_limited');
+	}
+	if (!(await rateLimit('otp:global:h', config.otpGlobalPerHour, 3600))) {
+		console.error('[security] global OTP hourly cap reached — possible SMS pumping');
+		throw new AppError('Sign-in codes are temporarily unavailable. Please try again shortly', 503, 'otp_capacity');
+	}
 	if (!(await rateLimit(`otp:cool:${phone}`, 1, OTP_RESEND_SECONDS)))
 		throw new AppError('Please wait a minute before requesting another code', 429, 'rate_limited');
 	if (!(await rateLimit(`otp:hour:${phone}`, 5, 3600)))
@@ -42,9 +56,11 @@ export async function requestOtp(rawPhone: string): Promise<{ phone: string; dev
 }
 
 /** Verifies the OTP, creates the user if new, and returns a session token. */
-export async function verifyOtp(rawPhone: string, code: string): Promise<{ token: string; userId: string; isNew: boolean }> {
+export async function verifyOtp(rawPhone: string, code: string, ctx: { ip?: string } = {}): Promise<{ token: string; userId: string; isNew: boolean }> {
 	const phone = normalisePhone(rawPhone);
 	if (!phone || !/^\d{6}$/.test(code.trim())) throw new AppError('Enter the 6-digit code we sent you');
+	if (ctx.ip && !(await rateLimit(`otp:verify:ip:${ctx.ip}`, 30, 3600)))
+		throw new AppError('Too many attempts from this network. Try again later', 429, 'rate_limited');
 	const db = await getDb();
 	const [otp] = await db
 		.select()

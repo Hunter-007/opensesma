@@ -40,15 +40,22 @@ export function normaliseHumanCode(input: string): string {
 	return raw.length === 8 ? `${raw.slice(0, 4)}-${raw.slice(4)}` : raw;
 }
 
-/** Uniform random 6-digit numeric code (100000–999999), no modulo bias. */
-export function sixDigitCode(): string {
+/** Length of gate codes. 8 digits = 90 million codes, so guessing one at the gate is impractical. */
+export const PASS_CODE_LENGTH = 8;
+
+/** Uniform random 8-digit numeric code (10000000–99999999), no modulo bias. */
+export function passCode(): string {
+	const span = 90_000_000;
 	const buf = new Uint32Array(1);
-	const limit = Math.floor(0xffffffff / 900000) * 900000;
+	const limit = Math.floor(0xffffffff / span) * span;
 	for (;;) {
 		crypto.getRandomValues(buf);
-		if (buf[0] < limit) return String(100000 + (buf[0] % 900000));
+		if (buf[0] < limit) return String(10_000_000 + (buf[0] % span));
 	}
 }
+
+/** "48219163" → "4821 9163" for reading aloud. */
+export const formatCode = (code: string) => (code.length === 8 ? `${code.slice(0, 4)} ${code.slice(4)}` : code);
 
 export async function sha256Hex(input: string): Promise<string> {
 	const digest = await crypto.subtle.digest('SHA-256', utf8.encode(input) as BufferSource);

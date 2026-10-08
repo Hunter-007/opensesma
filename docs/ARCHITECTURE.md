@@ -41,15 +41,21 @@ If the gate has no data at all, the walk-in screen shows the primary resident's 
 | Threat | Mitigation |
 | --- | --- |
 | Forged or edited pass | Ed25519 signature checked on the gate; estate secret key never leaves the server and is AES-256-GCM encrypted with `APP_SECRET` at rest |
-| Guessing 6-digit codes at the gate | Codes are only valid inside their window; keypad locks for a minute after 5 wrong codes (persists across reloads) |
+| Guessing codes at the gate | 8-digit codes (90 million), valid only in their window; keypad locks 1 min after 5 wrong codes and 15 min after 10, and the manager is alerted |
 | Screenshot shared widely | Entry caps per pass type, time windows, revocation on next sync, every use notifies the resident |
 | Edited pass reused | Edits re-issue a new token; the gate treats a token that differs from its cached one as cancelled |
-| Stolen gate phone | Device token is revocable from Admin; the phone wipes its data on next contact. Guards also need a PIN per shift |
+| Stolen gate phone | Holds no pass signatures or phone numbers; device token rotates daily and a reused old token blocks the device; tokens expire after 30 days unused; 6-digit guard PINs with lockout |
 | OTP abuse | OTPs are HMAC'd at rest, 5-minute expiry, 3 attempts, 60 s resend cooldown and 5 per hour per number |
 | Session theft | Random 256-bit tokens stored only as SHA-256; HttpOnly, SameSite=Lax, Secure cookies; 30-day sliding expiry |
 | Cross-estate access | Every query is scoped by the estate from the session or device; gate events referencing another estate's pass are dropped |
 | Setup link misuse | `/setup` is open only on an empty install or with `SETUP_TOKEN`; an existing phone number must still sign in with an OTP |
 | CSRF | SvelteKit origin checks on form actions; gate API uses bearer tokens, not cookies |
+
+## Security assessment
+
+An offensive review on 8 Oct 2026 found 20 issues; the fixes and their verification are in [docs/security/](security/). `tests/security.test.ts` keeps each one fixed.
+
+Key hardening since the review: login codes limited per network and service-wide and to Nigerian numbers; daily entry caps signed into personal passes; 8-digit gate codes with escalating lockout and manager alerts; gate phones receive unsigned pass details and no phone numbers, with daily token rotation and stolen-copy detection; the server re-checks every gate entry at server time and flags disagreements; strict CSP and frame protection; `/setup` requires a token in production.
 
 ## Privacy (Nigeria Data Protection Act 2023)
 

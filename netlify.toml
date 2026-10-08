@@ -12,9 +12,14 @@
   [headers.values]
     Cache-Control = "no-cache"
 
+# Every path, including static pages such as the guard console (/gate), which
+# never pass through the server's own header code.
 [[headers]]
   for = "/*"
   [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(self), geolocation=(), microphone=()"

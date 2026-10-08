@@ -45,8 +45,8 @@ for (const [street, number, name, phone] of houses) {
 }
 await setDuesStatus(estate.id, admin.id, units[4].id, 'owing', 'Q3 service charge');
 
-await addStaffAccount({ estateId: estate.id, actorUserId: admin.id, phone: '08030000010', name: 'Sunday Okon', role: 'guard', pin: '1234' });
-await addStaffAccount({ estateId: estate.id, actorUserId: admin.id, phone: '08030000011', name: 'Ibrahim Yusuf', role: 'guard', pin: '5678' });
+await addStaffAccount({ estateId: estate.id, actorUserId: admin.id, phone: '08030000010', name: 'Sunday Okon', role: 'guard', pin: '123456' });
+await addStaffAccount({ estateId: estate.id, actorUserId: admin.id, phone: '08030000011', name: 'Ibrahim Yusuf', role: 'guard', pin: '567890' });
 
 const [bello] = await db.select().from(schema.users).where(sql`phone = '+2348030000002'`);
 const actor = { userId: bello.id, estateId: estate.id, unitId: units[0].id };
@@ -77,7 +77,7 @@ Seeded "${estate.name}".
 
   Estate manager   0803 000 0001   → /admin
   Resident         0803 000 0002   → /app   (14 Adeyemi Street)
-  Guards (on /gate) Sunday Okon PIN 1234 · Ibrahim Yusuf PIN 5678
+  Guards (on /gate) Sunday Okon PIN 123456 · Ibrahim Yusuf PIN 567890
 
   Gate phone setup code for Main gate: ${fresh.enrollCode}
   Guest pass code (Chidi Okafor): ${guest.code}

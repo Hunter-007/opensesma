@@ -20,7 +20,7 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 
 	const db = await getDb();
 	const [row] = await db
-		.select({ pass: schema.passes, unit: schema.units, hostName: schema.users.name, hostPhone: schema.users.phone })
+		.select({ pass: schema.passes, unit: schema.units, hostName: schema.users.name })
 		.from(schema.passes)
 		.innerJoin(schema.units, eq(schema.units.id, schema.passes.unitId))
 		.leftJoin(schema.users, eq(schema.users.id, schema.passes.createdBy))
@@ -37,8 +37,9 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 		unit: unitLabel(row.unit),
 		name: p.visitorName,
 		code: p.code,
-		hostName: row.hostName ?? '',
-		hostPhone: row.hostPhone ?? null,
+		// First name only, and never the host's phone number: this page goes to
+		// whoever the link is forwarded to.
+		hostName: (row.hostName ?? '').split(' ')[0],
 		when: p.schedule ? formatSchedule(p.schedule) : `${formatDateTime(p.validFrom, tz)}${p.validTo ? ` – ${formatDateTime(p.validTo, tz)}` : ''}`,
 		group: p.type === 'event' ? p.maxEntries : 0,
 		state: p.status === 'revoked' ? 'cancelled' : isLive(p) ? (p.validFrom > new Date() ? 'upcoming' : 'active') : 'finished',

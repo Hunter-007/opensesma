@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { extractToken, generateSigningKey, peekPass, signPass, verifyPass, type PassClaims } from '../src/lib/shared/passToken';
 import { evaluatePass, matchesBan, withinSchedule } from '../src/lib/shared/evaluate';
 import { normalisePhone, formatPhone } from '../src/lib/shared/phone';
-import { sixDigitCode, normaliseHumanCode, humanCode } from '../src/lib/shared/encoding';
+import { passCode, normaliseHumanCode, humanCode } from '../src/lib/shared/encoding';
 
 const TZ = 'Africa/Lagos';
 // 2026-10-12 is a Monday. Lagos is UTC+1, so 09:00 UTC = 10:00 local.
@@ -18,6 +18,7 @@ const base: PassClaims = {
 	validFrom: s(MON_10AM) - 3600,
 	validTo: s(MON_10AM) + 3600,
 	maxEntries: 1,
+	perDay: 0,
 	schedule: null,
 	iat: s(MON_10AM) - 3600
 };
@@ -136,8 +137,8 @@ describe('helpers', () => {
 		expect(normalisePhone('12345')).toBeNull();
 		expect(formatPhone('+2348031234567')).toBe('0803 123 4567');
 	});
-	it('generates 6-digit codes in range', () => {
-		for (let i = 0; i < 1000; i++) expect(sixDigitCode()).toMatch(/^[1-9]\d{5}$/);
+	it('generates 8-digit codes in range', () => {
+		for (let i = 0; i < 1000; i++) expect(passCode()).toMatch(/^[1-9]\d{7}$/);
 	});
 	it('normalises typed human codes', () => {
 		const c = humanCode();

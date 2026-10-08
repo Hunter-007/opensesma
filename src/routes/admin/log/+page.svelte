@@ -45,6 +45,7 @@
 				</select></label>
 			<label class="field grow"><span>Search</span><input type="search" name="q" value={data.filter.q} placeholder="Visitor, guard or reason" /></label>
 			<label class="check"><input type="checkbox" name="conflicts" value="1" checked={data.filter.conflicts} /> Only double entries</label>
+			<label class="check"><input type="checkbox" name="flagged" value="1" checked={data.filter.flagged} /> Only entries needing review</label>
 			<div class="row"><button class="btn primary sm">Filter</button><a class="btn ghost sm" href="/admin/log">Clear</a></div>
 		</form>
 	{/if}
@@ -59,7 +60,7 @@
 				</thead>
 				<tbody>
 					{#each data.rows as r (r.id)}
-						<tr class:flag={r.kind === 'override' || r.conflict}>
+						<tr class:flag={r.kind === 'override' || r.conflict || r.flag}>
 							<td class="nowrap">{formatDateTime(r.at, tz)}</td>
 							<td>{r.visitor || '—'}</td>
 							<td>{r.unit || '—'}</td>
@@ -69,6 +70,7 @@
 							<td class="small">
 								{reasonText(r.reason)}
 								{#if r.conflict}<span class="chip deny">Double entry</span>{/if}
+								{#if r.flag}<span class="chip deny" title="The server's own check disagreed with the gate">Review: {r.flag === 'clock_skew' ? 'phone clock was wrong' : reasonText(r.flag).toLowerCase()}</span>{/if}
 								{#if r.offline}<span class="chip">Offline</span>{/if}
 							</td>
 						</tr>

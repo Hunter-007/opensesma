@@ -34,7 +34,7 @@ describe.skipIf(!NetlifyDB)('Netlify Database (production path)', () => {
 		const c = await estates.createEstate({ name: 'Prod Path', gateNames: ['Main'], admin: { phone: '08010000001', name: 'A' } });
 		const unit = await estates.addUnit(c.estate.id, 'Main Road', '1');
 		const p = await passes.createPass({ userId: c.admin.id, estateId: c.estate.id, unitId: unit.id }, { type: 'delivery' });
-		expect(p.code).toMatch(/^\d{6}$/);
+		expect(p.code).toMatch(/^\d{8}$/);
 		expect(await rateLimit('t:1', 1, 60)).toBe(true);
 		expect(await rateLimit('t:1', 1, 60)).toBe(false);
 	});

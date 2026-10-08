@@ -5,7 +5,9 @@ import { b64urlToBytes, bytesToB64url, utf8 } from './encoding';
  * modern browser) so the gate device can check a guard's PIN while offline.
  * Format: "<iterations>$<salt b64url>$<hash b64url>".
  */
-const ITERATIONS = 120_000;
+// Each guess costs ~0.15 s on a server and ~1 s on a budget phone; with 6 digits
+// that makes recovering a PIN from a stolen gate phone take days, not minutes.
+const ITERATIONS = 310_000;
 
 async function derive(pin: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
 	const keyMaterial = await crypto.subtle.importKey('raw', utf8.encode(pin) as BufferSource, 'PBKDF2', false, [
@@ -36,5 +38,6 @@ export async function verifyPin(pin: string, stored: string | null | undefined):
 	return diff === 0;
 }
 
-/** Guards use a 4-digit PIN: quick on the keypad, and the device itself must be enrolled. */
-export const isValidPin = (pin: string) => /^\d{4}$/.test(pin);
+/** Guards use a 6-digit PIN; the gate phone also locks after repeated wrong PINs. */
+export const PIN_LENGTH = 6;
+export const isValidPin = (pin: string) => /^\d{6}$/.test(pin);

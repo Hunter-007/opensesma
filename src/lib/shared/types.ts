@@ -71,6 +71,13 @@ export const DEFAULT_SETTINGS: EstateSettings = {
 	retentionMonths: 12
 };
 
+/**
+ * Daily entry caps for personal passes that last more than one visit. They stop
+ * one forwarded code from admitting a stream of people. Guests and deliveries
+ * are single-entry; events have their own total capacity.
+ */
+export const PER_DAY_CAP: Partial<Record<PassType, number>> = { staff: 4, artisan: 4, multiday: 6 };
+
 /** Pass types a household that owes dues can still create under the "restrict" levy rule. */
 export const ESSENTIAL_PASS_TYPES: PassType[] = ['guest', 'staff', 'delivery', 'artisan'];
 
@@ -92,10 +99,13 @@ export const DENY_MESSAGES: Record<string, string> = {
 	expired: 'Pass has expired',
 	outside_hours: 'Outside allowed hours',
 	used_up: 'Pass already used',
+	daily_limit: 'Pass has reached its entries for today',
 	unknown_code: 'Code not recognised',
 	banned: 'On the estate ban list — refer to supervisor',
 	unit_inactive: 'Household is no longer active',
 	locked: 'Keypad locked after too many wrong codes',
+	clock_skew: 'Gate phone clock was wrong',
+	unknown_pass: 'Pass not found',
 	not_ready: 'Gate phone not set up'
 };
 
