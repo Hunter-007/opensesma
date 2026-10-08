@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0E4D35"/>
+  <!-- two gate leaves swinging open, with a plate-yellow gap of light -->
+  <rect x="236" y="120" width="40" height="272" rx="6" fill="#FFD23F"/>
+  <path d="M120 136 L224 120 L224 392 L120 376 Z" fill="#F2F7F3"/>
+  <path d="M392 136 L288 120 L288 392 L392 376 Z" fill="#F2F7F3"/>
+  <circle cx="204" cy="258" r="9" fill="#0E4D35"/>
+  <circle cx="308" cy="258" r="9" fill="#0E4D35"/>
+</svg>

@@ -36,4 +36,5 @@ export async function verifyPin(pin: string, stored: string | null | undefined):
 	return diff === 0;
 }
 
-export const isValidPin = (pin: string) => /^\d{4,6}$/.test(pin);
+/** Guards use a 4-digit PIN: quick on the keypad, and the device itself must be enrolled. */
+export const isValidPin = (pin: string) => /^\d{4}$/.test(pin);

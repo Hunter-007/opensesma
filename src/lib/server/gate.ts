@@ -10,6 +10,8 @@ import { humanCode, normaliseHumanCode, randomId } from '../shared/encoding';
 import type { DuesStatus, EventKind, EventMethod, LevyRule, PassType, Role } from '../shared/types';
 import { isResidentRole } from '../shared/types';
 import { normalisePhone } from '../shared/phone';
+import type { SyncPayload } from '../shared/sync';
+export type { SyncBan, SyncGuard, SyncPass, SyncPayload, SyncUnit } from '../shared/sync';
 
 const ENROLL_HOURS = 24;
 
@@ -91,53 +93,6 @@ export async function authDevice(authHeader: string | null): Promise<GateDevice>
 
 // ---------------------------------------------------------------- sync
 
-export interface SyncPass {
-	id: string;
-	code: string;
-	token: string;
-	unitId: string;
-	type: PassType;
-	name: string;
-	purpose: string;
-	entriesUsed: number;
-	maxEntries: number;
-	status: 'active' | 'revoked';
-	validTo: number | null;
-	visitorPhone: string | null;
-}
-export interface SyncUnit {
-	id: string;
-	label: string;
-	active: boolean;
-	dues: DuesStatus;
-}
-export interface SyncGuard {
-	id: string;
-	name: string;
-	pinHash: string;
-}
-export interface SyncBan {
-	id: string;
-	name: string | null;
-	phone: string | null;
-	reason: string;
-}
-export interface SyncPayload {
-	serverTime: number;
-	cursor: string;
-	estate: { id: string; name: string; timeZone: string; publicKey: string; levyRule: LevyRule; staleSyncHours: number };
-	gate: { id: string; name: string };
-	device: { id: string; name: string };
-	passes: SyncPass[];
-	/** Sent only when changed (hash differs from what the device holds). */
-	units?: SyncUnit[];
-	unitsHash: string;
-	guards?: SyncGuard[];
-	guardsHash: string;
-	bans?: SyncBan[];
-	bansHash: string;
-}
-
 const OVERLAP_MS = 5_000;
 
 export async function buildSync(
@@ -155,11 +110,19 @@ export async function buildSync(
 	else passConds.push(eq(schema.passes.status, 'active'), or(isNull(schema.passes.validTo), gt(schema.passes.validTo, now))!);
 	const passRows = await db.select().from(schema.passes).where(and(...passConds));
 
+	// Primary residents' phones, so a guard can still call a house when the gate is offline.
+	const primaries = await db
+		.select({ unitId: schema.memberships.unitId, phone: schema.users.phone })
+		.from(schema.memberships)
+		.innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
+		.where(and(eq(schema.memberships.estateId, estate.id), eq(schema.memberships.role, 'resident_primary'), eq(schema.memberships.status, 'active')));
+	const phoneByUnit = new Map(primaries.map((p) => [p.unitId, p.phone]));
 	const units = (await db.select().from(schema.units).where(eq(schema.units.estateId, estate.id))).map((u) => ({
 		id: u.id,
 		label: unitLabel(u),
 		active: u.active,
-		dues: u.duesStatus
+		dues: u.duesStatus,
+		phone: phoneByUnit.get(u.id) ?? null
 	}));
 	units.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
 	const guards = (

@@ -331,7 +331,7 @@ export async function addStaffAccount(input: {
 	const db = await getDb();
 	const phone = normalisePhone(input.phone);
 	if (!phone) throw new AppError('Enter a valid phone number');
-	if (input.role === 'guard' && (!input.pin || !isValidPin(input.pin))) throw new AppError('Guards need a 4–6 digit PIN');
+	if (input.role === 'guard' && (!input.pin || !isValidPin(input.pin))) throw new AppError('Guards need a 4-digit PIN');
 	const user = await upsertUser(phone, input.name.trim());
 	const pinHash = input.pin ? await hashPin(input.pin) : null;
 	await db
@@ -346,7 +346,7 @@ export async function addStaffAccount(input: {
 }
 
 export async function resetGuardPin(estateId: string, actorUserId: string, membershipId: string, pin: string) {
-	if (!isValidPin(pin)) throw new AppError('PIN must be 4–6 digits');
+	if (!isValidPin(pin)) throw new AppError('PIN must be 4 digits');
 	const db = await getDb();
 	await db
 		.update(schema.memberships)
