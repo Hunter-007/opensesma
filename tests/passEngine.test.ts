@@ -39,7 +39,11 @@ describe('pass tokens', () => {
 		const [payload, sig] = token.split('.');
 		const forged = signPass({ ...base, maxEntries: 0 }, generateSigningKey().secretKey).split('.')[0];
 		expect(verifyPass(`${forged}.${sig}`, keys.publicKey).ok).toBe(false);
-		expect(verifyPass(`${payload}.${sig.slice(0, -2)}AA`, keys.publicKey).ok).toBe(false);
+		// Change the first signature character: it carries 6 full bits, so the
+		// decoded signature always differs (the last char only carries 2 bits,
+		// which made a "replace the tail" tamper occasionally a no-op).
+		const badSig = (sig[0] === 'A' ? 'B' : 'A') + sig.slice(1);
+		expect(verifyPass(`${payload}.${badSig}`, keys.publicKey).ok).toBe(false);
 		expect(verifyPass('garbage', keys.publicKey).ok).toBe(false);
 	});
 
