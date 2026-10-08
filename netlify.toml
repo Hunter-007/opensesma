@@ -1,0 +1,19 @@
+[build]
+  command = "npm run netlify:build"
+  publish = "build"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# The service worker must never be cached by the CDN, or guards get stuck on old code.
+[[headers]]
+  for = "/service-worker.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(self), geolocation=(), microphone=()"

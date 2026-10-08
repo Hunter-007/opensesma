@@ -1,0 +1,53 @@
+{
+  "name": "opensesma",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenSesma — offline-first estate access control for African residential estates.",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:seed": "tsx scripts/seed.ts",
+    "keys:vapid": "tsx scripts/vapid.ts",
+    "netlify:build": "npm run db:migrate && npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-netlify": "^5.2.4",
+    "@sveltejs/adapter-node": "^5.5.7",
+    "@sveltejs/kit": "^2.70.3",
+    "@sveltejs/vite-plugin-svelte": "^6.2.4",
+    "@types/papaparse": "^5.5.2",
+    "@types/qrcode": "^1.5.6",
+    "@types/web-push": "^3.6.4",
+    "drizzle-kit": "^0.31.11",
+    "svelte": "^5.57.2",
+    "svelte-check": "^4.7.6",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "vite": "^7.3.7",
+    "vitest": "^5.0.3"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@noble/curves": "^2.4.0",
+    "drizzle-orm": "^0.45.4",
+    "papaparse": "^5.7.0",
+    "postgres": "^3.4.9",
+    "qr-scanner": "^1.4.2",
+    "qrcode": "^1.5.4",
+    "uuid": "^14.0.2",
+    "web-push": "^3.6.7"
+  },
+  "overrides": {
+    "cookie": "^0.7.2"
+  }
+}
