@@ -75,10 +75,8 @@
 		<label class="field">
 			<span>Their phone (optional)</span>
 			<input name="phone" type="tel" inputmode="tel" placeholder="0803 123 4567" bind:value={phone} />
+			<small>Add it so WhatsApp or your text app opens straight to their chat.</small>
 		</label>
-		{#if phone}
-			<label class="check"><input type="checkbox" name="sms" checked={v.sms === 'on'} /> Also text them the code by SMS</label>
-		{/if}
 
 		{#if type === 'guest'}
 			<fieldset class="seg">
@@ -147,15 +145,6 @@
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: 12px;
-	}
-	.check {
-		display: flex;
-		gap: 8px;
-		align-items: center;
-	}
-	.check input {
-		width: 20px;
-		height: 20px;
 	}
 	.seg {
 		display: grid;

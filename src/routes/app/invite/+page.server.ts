@@ -42,8 +42,7 @@ export const actions: Actions = {
 				type,
 				visitorName: str(fd, 'name'),
 				visitorPhone: str(fd, 'phone') || undefined,
-				purpose: str(fd, 'purpose'),
-				sendSms: fd.get('sms') === 'on'
+				purpose: str(fd, 'purpose')
 			};
 			switch (type) {
 				case 'guest': {

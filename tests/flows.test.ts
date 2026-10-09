@@ -221,7 +221,19 @@ describe('PRD 2 — pass rules', () => {
 		expect(msg).toContain(`${p.code.slice(0, 4)} ${p.code.slice(4)}`);
 		expect(msg).toContain("You've been invited to 14 Adeyemi Street");
 		expect(msg).toContain('Hi Kemi');
-		expect(msg).toContain('/p/');
+		// Short link keeps the message to about one text; the full token stays out of it.
+		expect(msg).toContain(`/v/${p.id}`);
+		expect(msg).not.toContain(p.token);
+		expect(msg.length).toBeLessThan(320);
+	});
+
+	it('the short pass link redirects to the signed pass page', async () => {
+		const p = await passes.createPass({ userId: residentId, estateId, unitId }, { type: 'guest', visitorName: 'Tolu' });
+		const { GET } = await import('../src/routes/v/[id]/+server');
+		const go = (id: string) => GET({ params: { id }, setHeaders: () => {} } as never);
+		await expect(go(p.id)).rejects.toMatchObject({ status: 302, location: `/p/${p.token}` });
+		await expect(go('zzzzzzzzzz')).rejects.toMatchObject({ status: 404 });
+		await expect(go('../etc')).rejects.toMatchObject({ status: 404 });
 	});
 });
 

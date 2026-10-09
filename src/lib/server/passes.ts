@@ -1,8 +1,7 @@
 import { and, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
 import { getDb, schema } from './db';
 import { estateSecretKey, getEstate } from './estates';
-import { sendSms } from './sms';
-import { AppError, audit, rateLimit, unitLabel } from './util';
+import { AppError, audit } from './util';
 import { config } from './config';
 import { signPass, type PassClaims } from '../shared/passToken';
 import { formatCode, passCode, randomId } from '../shared/encoding';
@@ -22,8 +21,6 @@ export interface CreatePassInput {
 	schedule?: Schedule | null;
 	maxEntries?: number;
 	staffProfileId?: string | null;
-	/** Text the visitor an SMS with the code (costs an SMS credit). */
-	sendSms?: boolean;
 }
 
 export interface Actor {
@@ -182,11 +179,8 @@ export async function createPass(actor: Actor, input: CreatePassInput) {
 		.returning();
 
 	await audit(db, { estateId: estate.id, actorUserId: actor.userId, action: 'pass.create', entity: 'pass', entityId: id, data: { type: input.type } });
-
-	// Residents can text passes, but not run up the estate's SMS bill.
-	if (input.sendSms && visitorPhone && (await rateLimit(`sms:unit:${unit.id}`, 20, 86_400))) {
-		await sendSms(visitorPhone, shareMessage(pass, estate, unitLabel(unit), { short: true }));
-	}
+	// The app never sends the pass itself: the resident shares it from their own
+	// phone via WhatsApp or their text app (see /app/passes/[id]).
 	return pass;
 }
 
@@ -215,8 +209,10 @@ export async function isBanned(estateId: string, visitor: { name?: string | null
 }
 
 export const shareUrl = (token: string) => `${config.publicUrl}/p/${token}`;
+/** Short link for messages; redirects to the full signed link (src/routes/v/[id]). */
+export const shortShareUrl = (passId: string) => `${config.publicUrl}/v/${passId}`;
 
-type PassLike = Pick<typeof schema.passes.$inferSelect, 'type' | 'visitorName' | 'code' | 'token' | 'validFrom' | 'validTo' | 'schedule' | 'maxEntries'>;
+type PassLike = Pick<typeof schema.passes.$inferSelect, 'id' | 'type' | 'visitorName' | 'code' | 'token' | 'validFrom' | 'validTo' | 'schedule' | 'maxEntries'>;
 
 /** The WhatsApp/SMS message. Plain text so it works everywhere, even on feature phones. */
 export function shareMessage(
@@ -231,7 +227,7 @@ export function shareMessage(
 			? `${formatDateTime(pass.validFrom, estate.timeZone)} – ${formatDateTime(pass.validTo, estate.timeZone)}`
 			: `from ${formatDateTime(pass.validFrom, estate.timeZone)}`;
 	if (opts.short) {
-		return `${estate.name} gate pass for ${unit}. Code: ${formatCode(pass.code)}. Valid ${when}. Show code or QR at the gate: ${shareUrl(pass.token)}`;
+		return `${estate.name} gate pass for ${unit}. Code: ${formatCode(pass.code)}. Valid ${when}. Show code or QR at the gate: ${shortShareUrl(pass.id)}`;
 	}
 	const lines = [
 		pass.visitorName ? `Hi ${pass.visitorName.split(' ')[0]},` : 'Hello,',
@@ -241,7 +237,7 @@ export function shareMessage(
 		`Valid: ${when}`,
 		pass.type === 'event' && pass.maxEntries ? `Group pass for up to ${pass.maxEntries} people` : '',
 		'',
-		`Show this code or your QR to the guard: ${shareUrl(pass.token)}`,
+		`Show this code or your QR to the guard: ${shortShareUrl(pass.id)}`,
 		estate.address ? `Address: ${estate.address}` : '',
 		estate.settings.directionsNote ? `Directions: ${estate.settings.directionsNote}` : ''
 	];

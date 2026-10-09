@@ -15,7 +15,9 @@
 		canShare = 'share' in navigator;
 	});
 	const wa = $derived(`https://wa.me/${p.phone ? p.phone.replace('+', '') : ''}?text=${encodeURIComponent(data.message)}`);
-	const sms = $derived(`sms:${p.phone ?? ''}?&body=${encodeURIComponent(data.message)}`);
+	// `?&body=` is understood by both Android and iPhone messaging apps.
+	// WhatsApp's *bold* markers would show as literal asterisks in a text.
+	const sms = $derived(`sms:${p.phone ?? ''}?&body=${encodeURIComponent(data.message.replace(/\*/g, ''))}`);
 
 	async function nativeShare() {
 		try {
@@ -36,6 +38,20 @@
 
 <div class="stack">
 	{#if data.isNew}<p class="alert ok">Pass created. Send it to {p.name ? p.name.split(' ')[0] : 'your visitor'} now.</p>{/if}
+
+	{#if p.live}
+		<section class="share stack" aria-labelledby="send-h">
+			<h2 id="send-h" class="small muted">Send the code{p.phone ? ` to ${formatPhone(p.phone)}` : ''}</h2>
+			<div class="two">
+				<a class="btn primary wa" href={wa} target="_blank" rel="noopener">WhatsApp</a>
+				<a class="btn primary txt" href={sms}>Text message</a>
+			</div>
+			<div class="row">
+				{#if canShare}<button class="btn ghost" onclick={nativeShare}>Other apps…</button>{/if}
+				<button class="btn ghost" onclick={copy}>{copied ? 'Copied' : 'Copy message'}</button>
+			</div>
+		</section>
+	{/if}
 
 	<section class="pass card" class:dead={!p.live}>
 		<div class="spread">
@@ -59,16 +75,6 @@
 		</dl>
 	</section>
 
-	{#if p.live}
-		<section class="share stack">
-			<a class="btn primary block wa" href={wa} target="_blank" rel="noopener">Send on WhatsApp</a>
-			<div class="row">
-				<a class="btn" href={sms}>Send by SMS</a>
-				{#if canShare}<button class="btn" onclick={nativeShare}>Share…</button>{/if}
-				<button class="btn" onclick={copy}>{copied ? 'Copied' : 'Copy message'}</button>
-			</div>
-		</section>
-	{/if}
 
 	{#if data.events.length}
 		<section class="stack">
@@ -142,6 +148,15 @@
 	.wa {
 		background: #1f8a4c;
 		border-color: #1f8a4c;
+	}
+	.share h2 {
+		margin: 0;
+		font-weight: 600;
+	}
+	.two {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 8px;
 	}
 	.share .row .btn {
 		flex: 1;
