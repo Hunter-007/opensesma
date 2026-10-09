@@ -25,6 +25,15 @@ export const config = {
 	get smsDriver() {
 		return env('SMS_DRIVER') || 'console';
 	},
+	/**
+	 * Whether people can sign in with a code sent by text. Needs Termii in
+	 * production; in development the code is shown on screen. Without it,
+	 * people sign in with one-time links their estate manager sends them.
+	 */
+	get smsLoginEnabled() {
+		if (!this.isProd) return true;
+		return this.smsDriver === 'termii' && !!this.termii.apiKey;
+	},
 	termii: {
 		get apiKey() {
 			return env('TERMII_API_KEY');

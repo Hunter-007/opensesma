@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { ROLE_LABEL } from '$lib/shared/types';
 	let { data, form } = $props();
+	let busy = $state(false);
 </script>
 
 <svelte:head><title>Join your estate · OpenSesma</title></svelte:head>
@@ -17,19 +18,25 @@
 			{#if data.invite.unitLabel}<p><strong>{data.invite.unitLabel}</strong></p>{/if}
 			<p class="muted">You're invited as {ROLE_LABEL[data.invite.role].toLowerCase()}.</p>
 		</div>
-		{#if !data.signedIn}
-			<p>First, confirm your phone number{data.invite.maskedPhone ? ` (${data.invite.maskedPhone})` : ''}.</p>
+		{#if data.otherAccount}
+			<p>This phone is signed in to another OpenSesma account. Sign out, then join.</p>
+			<form method="POST" action="/logout?next={encodeURIComponent(page.url.pathname)}">
+				<button class="btn primary block">Sign out and continue</button>
+			</form>
+		{:else if !data.signedIn && !data.invite.linkSignIn}
+			<p>First, confirm your phone number.</p>
 			<a class="btn primary block" href="/login?next={encodeURIComponent(page.url.pathname)}">Continue with my phone</a>
 		{:else}
-			<form method="POST" class="stack">
+			<form method="POST" class="stack" onsubmit={() => (busy = true)}>
 				<label class="field">
 					<span>Your name</span>
-					<input name="name" type="text" autocomplete="name" value={data.userName || data.invite.name} required />
+					<input name="name" type="text" autocomplete="name" value={form?.values?.name ?? (data.userName || data.invite.name)} required />
 					<small>Guards see this name on your visitors' passes.</small>
 				</label>
 				{#if form?.error}<p class="alert error" role="alert">{form.error}</p>{/if}
-				<button class="btn primary block">Join household</button>
+				<button class="btn primary block" disabled={busy}>{busy ? 'Joining…' : 'Join and sign in'}</button>
 			</form>
+			{#if !data.signedIn}<p class="small muted">This link works once and signs you in on this phone. Don't forward it.</p>{/if}
 		{/if}
 	{/if}
 </main>

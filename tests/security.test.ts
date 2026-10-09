@@ -305,9 +305,11 @@ describe('F20 — setup and secrets', () => {
 		process.env.NODE_ENV = 'production';
 		process.env.APP_SECRET = 'prod-like-secret-for-this-test-only';
 		try {
-			await expect(load({ url: new URL('http://x/setup') } as never)).rejects.toMatchObject({ status: 403 });
+			const setHeaders = () => {};
+			await expect(load({ url: new URL('http://x/setup'), setHeaders } as never)).rejects.toMatchObject({ status: 403 });
 			process.env.SETUP_TOKEN = 'letmein';
-			await expect(load({ url: new URL('http://x/setup?token=letmein') } as never)).resolves.toEqual({});
+			await expect(load({ url: new URL('http://x/setup?token=wrong'), setHeaders } as never)).rejects.toMatchObject({ status: 403 });
+			await expect(load({ url: new URL('http://x/setup?token=letmein'), setHeaders } as never)).resolves.toMatchObject({ canSignIn: true });
 		} finally {
 			process.env.NODE_ENV = prev;
 			delete process.env.SETUP_TOKEN;

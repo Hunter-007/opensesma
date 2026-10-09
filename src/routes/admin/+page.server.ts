@@ -24,6 +24,8 @@ export const load: PageServerLoad = async (event) => {
 		recentOverrides: d.recentOverrides.map((e) => ({ id: e.id, name: e.visitorName, reason: e.reason, guard: e.guardName, gate: e.gateName, at: e.deviceTs.getTime() })),
 		devices: d.devices.map((x) => ({ ...x, lastSyncAt: x.lastSyncAt?.getTime() ?? null })),
 		setup: { units, devices, guards, residents },
-		welcome: event.url.searchParams.has('welcome')
+		welcome: event.url.searchParams.has('welcome'),
+		demo: event.url.searchParams.has('demo'),
+		origin: event.url.origin
 	};
 };

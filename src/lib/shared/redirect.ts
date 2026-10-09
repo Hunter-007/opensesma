@@ -5,7 +5,7 @@
  * "/\evil.com", "//evil.com", "/%5Cevil.com" or embedded tabs/newlines, which
  * browsers normalise into a different host.
  */
-const ALLOWED_PREFIXES = ['/app', '/admin', '/join', '/gate', '/welcome', '/w/', '/setup'];
+const ALLOWED_PREFIXES = ['/app', '/admin', '/join', '/gate', '/welcome', '/w/', '/l/', '/setup'];
 
 export function safeNext(next: string | null | undefined): string {
 	if (!next || !next.startsWith('/')) return '/';

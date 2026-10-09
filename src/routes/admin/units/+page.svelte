@@ -1,9 +1,12 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import ShareButtons from '$lib/components/ShareButtons.svelte';
+	import { formatPhone } from '$lib/shared/phone';
 	let { data, form } = $props();
 	let mode = $state<'none' | 'add' | 'import'>('none');
 	let inviting = $state<string | null>(null);
 	const f = $derived(form as Record<string, unknown> | null);
+	const invite = $derived(f?.invite as { name: string; phone: string; message: string } | undefined);
 	const preview = $derived(f?.preview as { csv: string; valid: { line: number; street: string; number: string; name: string; phone: string | null }[]; validCount: number; errors: { line: number; message: string; raw: string }[] } | undefined);
 	const sample = 'street,number,name,phone\nAdeyemi Street,14,Bello Musa,0803 111 2222\nAdeyemi Street,15,,\nOkafor Close,2,Chidi Nwosu,08031112224';
 	const sampleHref = `data:text/csv;charset=utf-8,${encodeURIComponent(sample)}`;
@@ -20,7 +23,14 @@
 		</div>
 	</div>
 
-	{#if f?.ok}<p class="alert ok">{f.ok}{#if f.link} Invite link: <a href={String(f.link)}>{f.link}</a>{/if}</p>{/if}
+	{#if f?.ok}<p class="alert ok">{f.ok}</p>{/if}
+	{#if invite}
+		<section class="card stack" aria-label="Send invite">
+			<p><strong>Send the invite to {invite.name || formatPhone(invite.phone)}</strong>{invite.name ? ` (${formatPhone(invite.phone)})` : ''}</p>
+			<ShareButtons message={invite.message} phone={invite.phone} />
+			<p class="small muted">Opening the link and tapping Join signs them in. It works once, for 14 days.</p>
+		</section>
+	{/if}
 	{#if f?.error}<p class="alert error" role="alert">{f.error}</p>{/if}
 
 	{#if mode === 'add'}
@@ -29,7 +39,7 @@
 			<label class="field"><span>House number</span><input name="number" type="text" placeholder="14" required /></label>
 			<label class="field"><span>Resident's name (optional)</span><input name="name" type="text" /></label>
 			<label class="field"><span>Resident's phone (optional)</span><input name="phone" type="tel" inputmode="tel" /></label>
-			<div class="row full"><button class="btn primary">Add house</button><span class="small muted">With a phone number, we text them an invite link.</span></div>
+			<div class="row full"><button class="btn primary">Add house</button><span class="small muted">With a phone number, you get an invite to send on WhatsApp or by text.</span></div>
 		</form>
 	{/if}
 
@@ -54,7 +64,7 @@
 				{#if preview.validCount > 20}<p class="small muted">…and {preview.validCount - 20} more.</p>{/if}
 				<form method="POST" action="?/import" use:enhance class="stack">
 					<input type="hidden" name="csv" value={preview.csv} />
-					<label class="row"><input type="checkbox" name="sendInvites" checked /> Text each resident their invite link now</label>
+					{#if data.smsInvites}<label class="row"><input type="checkbox" name="sendInvites" checked /> Text each resident their invite link now</label>{/if}
 					<div class="row"><button class="btn primary">Import {preview.validCount} houses</button><a class="btn ghost" href="/admin/units">Cancel</a></div>
 				</form>
 			</section>
@@ -106,7 +116,7 @@
 										<input type="hidden" name="unitId" value={u.id} />
 										<input name="name" type="text" placeholder="Name" />
 										<input name="phone" type="tel" inputmode="tel" placeholder="Phone" required />
-										<button class="btn sm primary">Text invite</button>
+										<button class="btn sm primary">Create invite</button>
 									</form>
 								{:else}
 									<button class="btn sm" onclick={() => (inviting = u.id)}>Invite resident</button>

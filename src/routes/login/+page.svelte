@@ -19,7 +19,15 @@
 
 <main class="wrap shell">
 	<a href="/" class="brand">OpenSesma</a>
-	{#if step === 'phone'}
+	{#if !data.smsLogin}
+		<h1>Sign in with your link</h1>
+		<p>OpenSesma signs you in with a one-time link from your estate manager, sent on WhatsApp or by text.</p>
+		<div class="card stack">
+			<p><strong>New to your estate?</strong> Open the invite link your estate manager sent you.</p>
+			<p><strong>New phone, or signed out?</strong> Ask your estate manager for a new sign-in link.</p>
+			<p><strong>Guards:</strong> you don't sign in here. Use the gate phone and your PIN.</p>
+		</div>
+	{:else if step === 'phone'}
 		<h1>Sign in with your phone</h1>
 		<p class="muted">We'll text you a 6-digit code. No password to remember.</p>
 		<form method="POST" action="?/send&next={encodeURIComponent(data.next)}" use:enhance={submit} class="stack">

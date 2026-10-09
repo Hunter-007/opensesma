@@ -89,6 +89,22 @@ export async function upsertUser(phone: string, name: string) {
 	return user;
 }
 
+/**
+ * Test data for trying an estate end to end: one house with a resident and
+ * one guard. Their phone numbers are made up (nothing is ever sent to them);
+ * the manager signs the resident in with a sign-in link from People.
+ */
+export async function addDemoData(estateId: string, actorUserId: string, guardPin: string) {
+	const db = await getDb();
+	const fakePhone = () => `+234709${String(Math.floor(Math.random() * 1e7)).padStart(7, '0')}`;
+	const unit = await addUnit(estateId, 'Demo Street', '1');
+	const resident = await upsertUser(fakePhone(), 'Ada Test');
+	await db.insert(schema.memberships).values({ id: randomId(), userId: resident.id, estateId, unitId: unit.id, role: 'resident_primary', status: 'active', approvedBy: actorUserId });
+	await addStaffAccount({ estateId, actorUserId, phone: fakePhone(), name: 'Test Guard', role: 'guard', pin: guardPin });
+	await audit(db, { estateId, actorUserId, action: 'estate.demo_data', entity: 'estate', entityId: estateId });
+	return { unit, resident };
+}
+
 // ---------------------------------------------------------------- units
 
 export async function addUnit(estateId: string, street: string, number: string) {
@@ -169,7 +185,7 @@ export async function commitHouseholdImport(estateId: string, actorUserId: strin
 		unitsCreated++;
 		if (row.phone) {
 			const invite = await createInvite({ estateId, unitId: unit.id, phone: row.phone, name: row.name, role: row.role, createdBy: actorUserId });
-			if (sendInvites) {
+			if (sendInvites && config.smsLoginEnabled) {
 				await sendInviteSms(invite.code, row.phone, row.name);
 				invitesSent++;
 			}
@@ -210,6 +226,19 @@ export async function createInvite(input: { estateId: string; unitId: string | n
 }
 
 export const inviteUrl = (code: string) => `${config.publicUrl}/join/${code}`;
+
+/** The invite the manager sends on WhatsApp or by text. Opening it signs the person in. */
+export function inviteMessage(name: string, estateName: string, house: string | null, code: string) {
+	const first = name.trim().split(' ')[0];
+	return [
+		first ? `Hi ${first},` : 'Hello,',
+		`you've been invited to ${house ? `${house}, ` : ''}${estateName} on OpenSesma — the app for sending gate passes to your visitors.`,
+		'',
+		`Tap to join: ${inviteUrl(code)}`,
+		'',
+		"The link works once and signs you in on your phone. Don't forward it."
+	].join('\n');
+}
 
 export async function sendInviteSms(code: string, phone: string, name: string) {
 	const hi = name ? `Hi ${name.split(' ')[0]}, ` : '';
@@ -331,8 +360,9 @@ export async function addHouseholdMember(input: {
 	if (count >= estate.settings.maxSubResidents)
 		throw new AppError(`A household can have at most ${estate.settings.maxSubResidents} members besides the primary resident`);
 	const invite = await createInvite({ estateId: input.estateId, unitId: input.unitId, phone, name: input.name, role: 'resident_sub', createdBy: input.actorUserId });
-	await sendInviteSms(invite.code, phone, input.name);
-	return invite;
+	if (config.smsLoginEnabled && config.smsDriver === 'termii') await sendInviteSms(invite.code, phone, input.name);
+	const [unit] = await db.select().from(schema.units).where(eq(schema.units.id, input.unitId));
+	return { invite, phone, message: inviteMessage(input.name, estate.name, unit ? `${unit.number} ${unit.street}` : null, invite.code) };
 }
 
 export async function addStaffAccount(input: {

@@ -50,8 +50,8 @@ export const actions: Actions = {
 		return attempt(async () => {
 			requirePrimary(r);
 			if (!str(fd, 'name')) throw new AppError('Enter their name');
-			await addHouseholdMember({ estateId: r.estate.id, unitId: r.unit.id, actorUserId: r.user.id, phone: str(fd, 'phone'), name: str(fd, 'name') });
-			return { ok: 'Invite sent by SMS. They join by opening the link.' };
+			const inv = await addHouseholdMember({ estateId: r.estate.id, unitId: r.unit.id, actorUserId: r.user.id, phone: str(fd, 'phone'), name: str(fd, 'name') });
+			return { ok: 'Invite ready. Send it to them — opening the link signs them in.', invite: { name: str(fd, 'name'), phone: inv.phone, message: inv.message } };
 		}, Object.fromEntries(fd));
 	},
 	removeMember: async (event) => {

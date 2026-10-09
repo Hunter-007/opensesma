@@ -5,11 +5,13 @@
 	import { formatPhone } from '$lib/shared/phone';
 	import { formatSchedule } from '$lib/shared/format';
 	import { formatCode } from '$lib/shared/encoding';
+	import ShareButtons from '$lib/components/ShareButtons.svelte';
 	let { data, form } = $props();
 	let addingStaff = $state(false);
 	let addingMember = $state(false);
 	const v = $derived((form?.values ?? {}) as Record<string, string>);
 	const ok = $derived(form && 'ok' in form ? (form.ok as string) : null);
+	const invite = $derived(form && 'invite' in form ? (form.invite as { name: string; phone: string; message: string }) : null);
 </script>
 
 <svelte:head><title>Household · OpenSesma</title></svelte:head>
@@ -17,6 +19,12 @@
 <div class="stack">
 	<h1>Household</h1>
 	{#if ok}<p class="alert ok">{ok}</p>{/if}
+	{#if invite}
+		<section class="card stack" aria-label="Send invite">
+			<p><strong>Send the invite to {invite.name}</strong> ({formatPhone(invite.phone)})</p>
+			<ShareButtons message={invite.message} phone={invite.phone} />
+		</section>
+	{/if}
 	{#if form?.error}<p class="alert error" role="alert">{form.error}</p>{/if}
 
 	<section class="stack">

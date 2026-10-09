@@ -16,6 +16,7 @@
 	{#if form?.ok}<p class="alert ok">{form.ok}</p>{/if}
 	{#if form?.error}<p class="alert error" role="alert">{form.error}</p>{/if}
 
+	{#if data.smsLogin}
 	<section class="card stack" id="join">
 		<h2>Estate join link</h2>
 		<p class="small muted">Post this in the estate WhatsApp group. Residents request to join their house and you approve them under People.</p>
@@ -25,6 +26,12 @@
 			<button class="btn sm" onclick={async () => { await navigator.clipboard.writeText(data.joinUrl); copied = true; }}>{copied ? 'Copied' : 'Copy link'}</button>
 		</div>
 	</section>
+	{:else}
+		<section class="card stack" id="join">
+			<h2>Getting residents on board</h2>
+			<p class="small muted">Add each house under <a href="/admin/units">Houses</a> with the resident's phone number, then send them their invite on WhatsApp or by text. Opening it signs them in. Heads of household can invite the rest of their household from the app.</p>
+		</section>
+	{/if}
 
 	<form method="POST" use:enhance={() => async ({ update }) => update({ reset: false })} class="stack">
 		<section class="card stack">

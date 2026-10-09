@@ -3,6 +3,7 @@
 	import { ROLE_LABEL } from '$lib/shared/types';
 	import { formatPhone } from '$lib/shared/phone';
 	import { relativeTime } from '$lib/shared/format';
+	import ShareButtons from '$lib/components/ShareButtons.svelte';
 	let { data, form } = $props();
 	let adding = $state(false);
 	let role = $state('guard');
@@ -10,6 +11,7 @@
 	let q = $state('');
 	const f = $derived(form as Record<string, unknown> | null);
 	const v = $derived((f?.values ?? {}) as Record<string, string>);
+	const link = $derived(f?.link as { name: string; phone: string; message: string } | null | undefined);
 	const shown = $derived(
 		q.trim() ? data.residents.filter((r) => `${r.name} ${r.phone} ${r.unitLabel}`.toLowerCase().includes(q.trim().toLowerCase())) : data.residents
 	);
@@ -20,6 +22,12 @@
 <div class="stack">
 	<h1>People</h1>
 	{#if f?.ok}<p class="alert ok">{f.ok}</p>{/if}
+	{#if link}
+		<section class="card stack sendlink" aria-label="Send sign-in link">
+			<p><strong>Send {link.name ? `${link.name.split(' ')[0]}'s` : 'the'} sign-in link</strong> to {formatPhone(link.phone)}</p>
+			<ShareButtons message={link.message} phone={link.phone} />
+		</section>
+	{/if}
 	{#if f?.error}<p class="alert error" role="alert">{f.error}</p>{/if}
 
 	{#if data.pending.length}
@@ -89,6 +97,9 @@
 											<button class="btn sm" onclick={() => (pinFor = m.id)}>Change PIN</button>
 										{/if}
 									{/if}
+									{#if m.userId !== data.me.id && m.role !== 'guard'}
+										<form method="POST" action="?/link" use:enhance><input type="hidden" name="membershipId" value={m.id} /><button class="btn sm">Sign-in link</button></form>
+									{/if}
 									{#if m.userId !== data.me.id}
 										<form method="POST" action="?/remove" use:enhance><input type="hidden" name="membershipId" value={m.id} /><button class="btn sm ghost danger">Remove</button></form>
 									{/if}
@@ -107,7 +118,7 @@
 			<input type="search" bind:value={q} placeholder="Search name, phone or house" class="search" />
 		</div>
 		{#if !data.residents.length}
-			<p class="muted">No residents have joined yet. Invite them from <a href="/admin/units">Houses</a> or share the join link from <a href="/admin/settings#join">Settings</a>.</p>
+			<p class="muted">No residents have joined yet. Invite them from <a href="/admin/units">Houses</a>{data.smsLogin ? " or share the join link from Settings" : ""}.</p>
 		{:else}
 			<div class="table-wrap">
 				<table>
@@ -119,7 +130,7 @@
 								<td>{m.name}</td>
 								<td>{formatPhone(m.phone)}</td>
 								<td class="small">{ROLE_LABEL[m.role]}</td>
-								<td class="actions"><form method="POST" action="?/remove" use:enhance><input type="hidden" name="membershipId" value={m.id} /><button class="btn sm ghost danger">Remove</button></form></td>
+								<td class="actions"><form method="POST" action="?/link" use:enhance><input type="hidden" name="membershipId" value={m.id} /><button class="btn sm">Sign-in link</button></form><form method="POST" action="?/remove" use:enhance><input type="hidden" name="membershipId" value={m.id} /><button class="btn sm ghost danger">Remove</button></form></td>
 							</tr>
 						{/each}
 					</tbody>

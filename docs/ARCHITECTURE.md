@@ -45,10 +45,11 @@ If the gate has no data at all, the walk-in screen shows the primary resident's 
 | Screenshot shared widely | Entry caps per pass type, time windows, revocation on next sync, every use notifies the resident |
 | Edited pass reused | Edits re-issue a new token; the gate treats a token that differs from its cached one as cancelled |
 | Stolen gate phone | Holds no pass signatures or phone numbers; device token rotates daily and a reused old token blocks the device; tokens expire after 30 days unused; 6-digit guard PINs with lockout |
-| OTP abuse | OTPs are HMAC'd at rest, 5-minute expiry, 3 attempts, 60 s resend cooldown and 5 per hour per number |
+| Sign-in without SMS | When Termii isn't configured, people sign in with one-time links the estate manager sends on WhatsApp or by text (`src/lib/server/links.ts`): random 192-bit tokens stored only as SHA-256, single use, 3-day expiry, a new link cancels older ones, and the GET page changes nothing (signing in is a POST) so link previews can't use them up. Invite links sign people in the same way. A manager can only issue links for people whose memberships are all in their own estate. Managers recover access through the setup link (`SETUP_TOKEN`). Accepted risk: a manager can sign in as their own residents; every link is audited |
+| OTP abuse (when SMS is on) | OTPs are HMAC'd at rest, 5-minute expiry, 3 attempts, 60 s resend cooldown and 5 per hour per number |
 | Session theft | Random 256-bit tokens stored only as SHA-256; HttpOnly, SameSite=Lax, Secure cookies; 30-day sliding expiry |
 | Cross-estate access | Every query is scoped by the estate from the session or device; gate events referencing another estate's pass are dropped |
-| Setup link misuse | `/setup` is open only on an empty install or with `SETUP_TOKEN`; an existing phone number must still sign in with an OTP |
+| Setup link misuse | In production `/setup` needs `SETUP_TOKEN`. The token holder can create estates and sign in as any estate manager, so it must stay private |
 | CSRF | SvelteKit origin checks on form actions; gate API uses bearer tokens, not cookies |
 
 ## Security assessment

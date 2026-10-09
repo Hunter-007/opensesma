@@ -93,6 +93,21 @@ export const invites = pgTable('invites', {
 	createdAt: createdAt()
 });
 
+/**
+ * One-time sign-in links an estate manager sends a member on WhatsApp or by
+ * text (the MVP has no SMS login codes). Only a hash of the token is stored.
+ */
+export const loginLinks = pgTable('login_links', {
+	/** sha256 of the token in the URL. */
+	id: text('id').primaryKey(),
+	estateId: text('estate_id').notNull().references(() => estates.id, { onDelete: 'cascade' }),
+	userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+	createdBy: text('created_by'),
+	expiresAt: ts('expires_at').notNull(),
+	usedAt: ts('used_at'),
+	createdAt: createdAt()
+});
+
 export const otps = pgTable(
 	'otps',
 	{

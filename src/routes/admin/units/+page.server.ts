@@ -4,15 +4,15 @@ import {
 	addUnit,
 	commitHouseholdImport,
 	createInvite,
-	inviteUrl,
+	inviteMessage,
 	listUnits,
 	parseHouseholdCsv,
-	sendInviteSms,
 	setDuesStatus
 } from '$lib/server/estates';
 import { getDb, schema } from '$lib/server/db';
 import { AppError, audit } from '$lib/server/util';
 import { normalisePhone } from '$lib/shared/phone';
+import { config } from '$lib/server/config';
 import type { DuesStatus } from '$lib/shared/types';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -33,7 +33,8 @@ export const load: PageServerLoad = async (event) => {
 		units: units
 			.filter((u) => !dues || u.duesStatus === dues)
 			.map((u) => ({ id: u.id, label: u.label, street: u.street, active: u.active, duesStatus: u.duesStatus, duesNote: u.duesNote, residents: byUnit.get(u.id) ?? [] })),
-		total: units.length
+		total: units.length,
+		smsInvites: config.smsLoginEnabled
 	};
 };
 
@@ -48,8 +49,8 @@ export const actions: Actions = {
 				const p = normalisePhone(phone);
 				if (!p) throw new AppError('House added, but the phone number looks wrong');
 				const inv = await createInvite({ estateId: a.estateId, unitId: unit.id, phone: p, name: str(fd, 'name'), role: 'resident_primary', createdBy: a.user.id });
-				await sendInviteSms(inv.code, p, str(fd, 'name'));
-				return { ok: `Added ${unit.number} ${unit.street} and texted the invite.`, link: inviteUrl(inv.code) };
+				const house = `${unit.number} ${unit.street}`;
+				return { ok: `Added ${house}. Now send the invite.`, invite: { name: str(fd, 'name'), phone: p, message: inviteMessage(str(fd, 'name'), a.estate.name, house, inv.code) } };
 			}
 			return { ok: `Added ${unit.number} ${unit.street}.` };
 		}, Object.fromEntries(fd));
@@ -70,7 +71,9 @@ export const actions: Actions = {
 		return attempt(async () => {
 			const report = parseHouseholdCsv(str(fd, 'csv'));
 			const res = await commitHouseholdImport(a.estateId, a.user.id, report.valid, fd.get('sendInvites') === 'on');
-			return { ok: `Imported ${res.unitsCreated} houses${res.invitesSent ? ` and texted ${res.invitesSent} invites` : ''}.` };
+			return {
+				ok: `Imported ${res.unitsCreated} houses${res.invitesSent ? ` and texted ${res.invitesSent} invites` : ''}.${config.smsLoginEnabled ? '' : ' Send each resident their invite with "Invite resident" in the list below.'}`
+			};
 		});
 	},
 	dues: async (event) => {
@@ -88,8 +91,9 @@ export const actions: Actions = {
 			const p = normalisePhone(str(fd, 'phone'));
 			if (!p) throw new AppError('Enter a valid phone number');
 			const inv = await createInvite({ estateId: a.estateId, unitId: str(fd, 'unitId'), phone: p, name: str(fd, 'name'), role: 'resident_primary', createdBy: a.user.id });
-			await sendInviteSms(inv.code, p, str(fd, 'name'));
-			return { ok: 'Invite texted.', link: inviteUrl(inv.code) };
+			const [unit] = await (await getDb()).select().from(schema.units).where(eq(schema.units.id, inv.unitId!));
+			const house = unit ? `${unit.number} ${unit.street}` : null;
+			return { ok: 'Invite ready. Send it to them.', invite: { name: str(fd, 'name'), phone: p, message: inviteMessage(str(fd, 'name'), a.estate.name, house, inv.code) } };
 		});
 	},
 	toggle: async (event) => {

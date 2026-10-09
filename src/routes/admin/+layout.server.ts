@@ -8,6 +8,8 @@ export const load: LayoutServerLoad = (event) => {
 		me: { id: a.user.id, name: a.user.name, role: a.membership.role },
 		estate: { id: a.estate.id, name: a.estate.name, timeZone: a.estate.timeZone, settings: a.estate.settings, address: a.estate.address },
 		joinUrl: `${config.publicUrl}/join/estate/${a.estate.id}`,
+		// Without SMS codes, people can only sign in through invites and sign-in links.
+		smsLogin: config.smsLoginEnabled,
 		vapidKey: config.vapid.publicKey || null
 	};
 };
