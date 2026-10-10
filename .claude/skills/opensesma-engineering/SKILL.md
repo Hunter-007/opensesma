@@ -89,6 +89,5 @@ with behaviour changes.
 
 ## Known gaps / next engineering work
 
-- README still describes 6-digit codes and SMS-first sign-in; update to 8-digit codes, link sign-in and WhatsApp/text sharing.
 - Gate sync every 60 s is the main load; slowing idle sync to ~3 min would cut requests ~60%.
 - Planned infra move at ~3 paying estates: one VPS (adapter-node + Postgres) behind Cloudflare, nightly off-site backups, uptime monitor on `/api/health`, Sentry.

@@ -3,7 +3,7 @@
 ## Goals that shaped the design
 
 1. **The gate must never stop working.** Gatehouse power and data are unreliable, so every gate decision is made on the gate phone.
-2. **Any phone.** One browser app (PWA) for residents, guards and managers. No app store. Visitors need nothing installed — a 6-digit code read aloud works.
+2. **Any phone.** One browser app (PWA) for residents, guards and managers. No app store. Visitors need nothing installed — an 8-digit code read aloud works.
 3. **Cheap on data.** System fonts, ~116 KB gzipped JS for the whole app, a no-JS visitor page, delta sync.
 4. **Accountable.** Every entry, refusal and override is logged with the guard, gate and time; admin actions are audited.
 
@@ -32,9 +32,9 @@
 
 ## Walk-ins (no phone calls)
 
-`POST /api/gate/walkins` → web push to every active household member with *Let in / Decline* buttons. The gate polls every 3 s. When polled after 45 s with no answer, the server texts the household a single-use link (`/w/<token>`) — so no cron is needed on serverless. After 3 minutes the gate shows the household's numbers to call; requests expire after 15 minutes. The first answer wins; later answers see who decided. Approval creates a one-time pass the gate verifies like any other.
+`POST /api/gate/walkins` → web push to every active household member with *Let in / Decline* buttons. The gate polls every 3 s. If SMS is configured, the server texts the household a single-use link (`/w/<token>`) when polled after 45 s with no answer — so no cron is needed on serverless; without SMS this step is skipped. After 3 minutes the server returns the household's numbers so the guard can tap to call; requests expire after 15 minutes. The first answer wins; later answers see who decided. Approval creates a one-time pass the gate verifies like any other.
 
-If the gate has no data at all, the walk-in screen shows the primary resident's number (synced with the house list) to call instead.
+If the gate has no data at all, the walk-in screen tells the guard to ask the visitor to phone their host or the estate office. Gate phones never store resident phone numbers.
 
 ## Security model
 
@@ -62,7 +62,8 @@ Key hardening since the review: login codes limited per network and service-wide
 
 - Minimal data: visitor name and optional phone; ID numbers only for household staff.
 - Retention: a daily job (`/api/cron/maintenance`, triggered by `netlify/functions/maintenance.mts`) replaces visitor names and phones older than the estate's retention period (default 12 months) with `[removed]`.
-- Guards see only what the gate needs. Resident phone numbers are on the gate phone solely for the offline "call the house" fallback.
+- Guards see only what the gate needs. Gate phones hold no phone numbers; the online walk-in call fallback fetches them from the server only after 3 minutes without an answer.
+- Visitor pages show the host's first name only, never their number. The app sends no messages itself: residents share passes from their own WhatsApp or text app.
 
 ## Levy-linked access
 
