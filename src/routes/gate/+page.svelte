@@ -44,6 +44,7 @@
 	let estate = $state(engine.estate);
 	let guard = $state(engine.guard);
 	let guards = $state(engine.guards);
+	let shiftNotice = $state<string | null>(null);
 	let units = $state(engine.units);
 	let lastSyncMeta = $state<number | null>(null);
 	const stale = $derived(lastSyncMeta === null || now - lastSyncMeta > (estate?.staleSyncHours ?? 6) * 3_600_000);
@@ -51,6 +52,7 @@
 		estate = engine.estate;
 		guard = engine.guard;
 		guards = engine.guards;
+		shiftNotice = engine.shiftNotice;
 		units = engine.units;
 		lastSyncMeta = engine.meta.lastSyncAt;
 	}
@@ -83,7 +85,14 @@
 		if (manual) flash(r.ok ? 'Up to date' : 'No connection. Working offline.', r.ok ? 'ok' : 'error');
 		await refresh();
 		if (view === 'shift' && engine.guard) view = 'home';
-		if (view === 'home' && !engine.guard) view = 'shift';
+		if (!['shift', 'enroll', 'removed', 'loading'].includes(view) && engine.enrolled && !engine.guard) {
+			// Signed out by the server (on duty at another gate, ended by the manager…):
+			// back to the name list so the reason is shown.
+			shiftGuard = '';
+			pin = '';
+			pinError = '';
+			view = 'shift';
+		}
 	}
 
 	let wakeLock: { release: () => Promise<void> } | null = null;
@@ -146,16 +155,24 @@
 		busy = false;
 	}
 
+	let starting = $state(false);
 	async function startShift(p: string) {
+		if (starting) return;
 		pinError = '';
-		if (await engine.startShift(shiftGuard, p)) {
-			pin = '';
+		starting = true;
+		const r = await engine.startShift(shiftGuard, p);
+		starting = false;
+		pin = '';
+		if (r.ok) {
+			shiftGuard = '';
 			view = 'home';
 			pull();
+			if (r.offline) flash('Shift started offline. It will be checked when the phone is back online.', 'ok');
+		} else if (r.reason === 'removed') {
+			view = 'removed';
 		} else {
-			pin = '';
 			pinLock = engine.pinLockedFor();
-			pinError = pinLock ? '' : 'Wrong PIN. Try again.';
+			pinError = pinLock ? '' : r.error;
 			navigator.vibrate?.(200);
 		}
 	}
@@ -351,6 +368,7 @@
 		{:else if view === 'shift'}
 			<div class="panel stack">
 				<h1>Start your shift</h1>
+				{#if shiftNotice && !shiftGuard}<p class="alert warn" role="alert">{shiftNotice}</p>{/if}
 				{#if !guards.length}
 					<p class="alert warn">No guards are set up yet. The estate manager adds guards and their PINs under Admin → People. Then tap Sync above.</p>
 				{:else if !shiftGuard}
@@ -366,6 +384,7 @@
 						<p class="alert error">Too many wrong PINs. Try again in {Math.ceil(pinLock / 60)} minute{pinLock > 60 ? 's' : ''}.</p>
 					{:else}
 						<Keypad length={PIN_LENGTH} bind:value={pin} onsubmit={startShift} label="PIN" mask />
+						{#if starting}<p class="small muted">Checking…</p>{/if}
 					{/if}
 					{#if pinError}<p class="alert error">{pinError}</p>{/if}
 					<button class="btn ghost" onclick={() => ((shiftGuard = ''), (pin = ''), (pinError = ''))}>Not me</button>

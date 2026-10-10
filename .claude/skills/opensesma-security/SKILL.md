@@ -25,6 +25,7 @@ place: **never delete or weaken those tests to make a change pass.**
 - Syncs are serialised across tabs (`navigator.locks`) and always read the newest token from IndexedDB.
 - Guard PINs are 6 digits, PBKDF2 at 310k iterations, with a lockout after 5 wrong in 15 min (lasts 5 min).
 - Keypad lockout: 1 min after 5 wrong codes, 15 min after 10. Admins are alerted after 10 unknown codes in 15 min.
+- One open shift per guard (`guard_shifts`, partial unique index). Shifts are checked online before they start, and reconciled on sync when started offline. The manager is alerted on a clash.
 
 **Server re-check**
 - Every uploaded entry is re-evaluated at server time; disagreements are stored in `access_events.flag` ("entries needing review").

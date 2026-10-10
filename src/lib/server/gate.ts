@@ -3,6 +3,7 @@ import { getDb, schema } from './db';
 import { randomToken, sha256 } from './crypto';
 import { pushToUsers } from './push';
 import { sendSms } from './sms';
+import { checkShift, endShiftsForDevices } from './shifts';
 import { AppError, audit, rateLimit, unitLabel } from './util';
 import { config } from './config';
 import { createPass, isBanned } from './passes';
@@ -48,6 +49,7 @@ export async function regenerateEnrollCode(estateId: string, actorUserId: string
 		.where(and(eq(schema.devices.id, deviceId), eq(schema.devices.estateId, estateId)))
 		.returning();
 	if (!device) throw new AppError('Device not found', 404);
+	await endShiftsForDevices([deviceId]);
 	await audit(db, { estateId, actorUserId, action: 'device.reenroll', entity: 'device', entityId: deviceId });
 	return device;
 }
@@ -58,6 +60,7 @@ export async function revokeDevice(estateId: string, actorUserId: string, device
 		.update(schema.devices)
 		.set({ revokedAt: new Date(), tokenHash: null, prevTokenHash: null, enrollCode: null })
 		.where(and(eq(schema.devices.id, deviceId), eq(schema.devices.estateId, estateId)));
+	await endShiftsForDevices([deviceId]);
 	await audit(db, { estateId, actorUserId, action: 'device.revoke', entity: 'device', entityId: deviceId });
 }
 
@@ -114,6 +117,7 @@ export async function authDevice(authHeader: string | null): Promise<GateDevice>
 	// An old token turned up after it was replaced: two copies of this phone's
 	// credentials exist. Stop both and tell the estate manager.
 	await db.update(schema.devices).set({ revokedAt: new Date(), tokenHash: null, prevTokenHash: null }).where(eq(schema.devices.id, previous.id));
+	await endShiftsForDevices([previous.id]);
 	await audit(db, { estateId: previous.estateId, action: 'device.token_reuse', entity: 'device', entityId: previous.id });
 	await notifyAdmins(previous.estateId, {
 		title: 'Gate phone blocked',
@@ -149,7 +153,7 @@ const OVERLAP_MS = 5_000;
 
 export async function buildSync(
 	device: GateDevice,
-	opts: { since?: string | null; unitsHash?: string; guardsHash?: string; bansHash?: string }
+	opts: { since?: string | null; unitsHash?: string; guardsHash?: string; bansHash?: string; shift?: { id: string | null; guardId: string | null; startedAt?: number } }
 ): Promise<SyncPayload> {
 	const db = await getDb();
 	const now = new Date();
@@ -193,7 +197,9 @@ export async function buildSync(
 	await db.update(schema.devices).set({ lastSyncAt: now }).where(eq(schema.devices.id, device.id));
 	const newToken = await maybeRotate(device);
 
+	const shift = opts.shift ? await checkShift(device, opts.shift.id, opts.shift.guardId, opts.shift.startedAt) : undefined;
 	return {
+		...(shift ? { shift } : {}),
 		serverTime: now.getTime(),
 		cursor: now.toISOString(),
 		...(newToken ? { newToken } : {}),
@@ -476,7 +482,7 @@ async function notifyHousehold(estateId: string, n: { unitId: string; kind: Even
 	await pushToUsers(members.map((m) => m.userId), { title, body, url: '/app/history', tag: `visit-${n.unitId}` });
 }
 
-async function notifyAdmins(estateId: string, payload: { title: string; body: string; url: string; tag: string }) {
+export async function notifyAdmins(estateId: string, payload: { title: string; body: string; url: string; tag: string }) {
 	const db = await getDb();
 	const admins = await db
 		.select({ userId: schema.memberships.userId })

@@ -333,6 +333,10 @@ export async function deactivateMember(estateId: string, actorUserId: string, me
 		.update(schema.passes)
 		.set({ status: 'revoked', revokedAt: new Date(), updatedAt: new Date() })
 		.where(and(eq(schema.passes.estateId, estateId), eq(schema.passes.createdBy, m.userId), eq(schema.passes.status, 'active')));
+	if (m.role === 'guard') {
+		const { endShiftsForGuard } = await import('./shifts');
+		await endShiftsForGuard(estateId, m.userId);
+	}
 	await audit(db, { estateId, actorUserId, action: 'membership.deactivate', entity: 'membership', entityId: membershipId });
 }
 

@@ -177,6 +177,35 @@ export const passes = pgTable(
 	]
 );
 
+/**
+ * Guard shifts, so one guard can only be on duty at one gate phone at a time.
+ * The id is made on the gate phone (UUIDv7), so a shift started offline is
+ * registered under the same id when the phone next syncs.
+ */
+export const guardShifts = pgTable(
+	'guard_shifts',
+	{
+		id: text('id').primaryKey(),
+		estateId: text('estate_id').notNull().references(() => estates.id, { onDelete: 'cascade' }),
+		guardUserId: text('guard_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+		deviceId: text('device_id').notNull().references(() => devices.id, { onDelete: 'cascade' }),
+		gateId: text('gate_id').notNull().references(() => gates.id, { onDelete: 'cascade' }),
+		startedAt: ts('started_at').notNull(),
+		lastSeenAt: ts('last_seen_at').notNull(),
+		endedAt: ts('ended_at'),
+		/** ended | replaced | manager | expired | on_duty_elsewhere | device_removed */
+		endReason: text('end_reason'),
+		/** Started while the gate phone was offline (checked on its next sync). */
+		startedOffline: boolean('started_offline').notNull().default(false),
+		createdAt: createdAt()
+	},
+	(t) => [
+		// The rule itself: at most one open shift per guard, enforced by the database.
+		uniqueIndex('guard_shifts_one_open_per_guard').on(t.guardUserId).where(sql`${t.endedAt} is null`),
+		index('guard_shifts_device_open').on(t.deviceId, t.endedAt)
+	]
+);
+
 export const devices = pgTable('devices', {
 	id: text('id').primaryKey(),
 	estateId: text('estate_id').notNull().references(() => estates.id, { onDelete: 'cascade' }),

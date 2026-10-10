@@ -91,7 +91,7 @@ Self-hosting on a VPS works too: `ADAPTER=node npm run build && node build` (set
 
 ## Setting up a gate
 
-1. Admin → **People** → add each guard with a 6-digit PIN.
+1. Admin → **People** → add each guard with a 6-digit PIN. A guard can be on duty at only one gate at a time; Admin → **Gate phones** shows who is on duty where and lets you end a stuck shift.
 2. Admin → **Gate phones** → *Add a phone* for each gate. Note the setup code (it works once, for 24 hours).
 3. On the gate phone (Android 8+, Chrome): open `https://<your-site>/gate`, add it to the home screen, enter the setup code.
 4. Keep it on a power bank. It works without data; it only needs a connection now and then to receive new passes and send its log.
@@ -99,7 +99,7 @@ Self-hosting on a VPS works too: `ADAPTER=node npm run build && node build` (set
 ## Development
 
 ```bash
-npm test          # 108 tests: pass engine, server flows on embedded Postgres, offline gate engine, sign-in links, and a regression test for every security finding
+npm test          # 120 tests: pass engine, server flows on embedded Postgres, offline gate engine, sign-in links, guard shifts, and a regression test for every security finding
 npm run check     # svelte-check / TypeScript — keep it at 0 errors, 0 warnings
 npm run db:generate -- --name <what_changed>   # after editing src/lib/server/db/schema.ts — also copies the SQL to netlify/database/migrations/
                                                # never edit or delete a migration once deployed; Netlify rejects it

@@ -59,4 +59,9 @@ export interface SyncPayload {
 	guardsHash: string;
 	bans?: SyncBan[];
 	bansHash: string;
+	/**
+	 * State of the shift the phone reported. `active: false` means the phone
+	 * must end it (on duty at another gate, ended by the manager, expired…).
+	 */
+	shift?: { active: true } | { active: false; reason: string; message: string };
 }

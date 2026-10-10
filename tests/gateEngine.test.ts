@@ -12,6 +12,7 @@ process.env.VITEST = 'true';
 const estates = await import('../src/lib/server/estates');
 const passes = await import('../src/lib/server/passes');
 const gate = await import('../src/lib/server/gate');
+const shifts = await import('../src/lib/server/shifts');
 const { getDb } = await import('../src/lib/server/db');
 const { GateEngine } = await import('../src/lib/client/gate/engine');
 
@@ -33,9 +34,17 @@ vi.stubGlobal('fetch', async (input: string, init: RequestInit = {}) => {
 					since: url.searchParams.get('since'),
 					unitsHash: url.searchParams.get('u') ?? undefined,
 					guardsHash: url.searchParams.get('g') ?? undefined,
-					bansHash: url.searchParams.get('b') ?? undefined
+					bansHash: url.searchParams.get('b') ?? undefined,
+					shift: url.searchParams.get('shift')
+						? { id: url.searchParams.get('shift'), guardId: url.searchParams.get('guard'), startedAt: Number(url.searchParams.get('shiftStart')) || undefined }
+						: undefined
 				})
 			);
+		if (url.pathname === '/api/gate/shift') {
+			const b = JSON.parse(String(init.body));
+			if (b.action === 'end') return json(await shifts.endShift(device, b.shiftId).then(() => ({ ok: true })));
+			return json(await shifts.startShift(device, { shiftId: b.shiftId, guardUserId: b.guardId, startedAt: b.startedAt }));
+		}
 		if (url.pathname === '/api/gate/events') {
 			const body = JSON.parse(String(init.body));
 			return json(await gate.ingestEvents(device, body.events, { sentAt: body.sentAt }));
@@ -70,8 +79,8 @@ describe('guard console engine', () => {
 	it('enrols, downloads guards, and verifies a PIN offline', async () => {
 		expect(engine.ready).toBe(true);
 		online = false;
-		expect(await engine.startShift(engine.guards[0].id, '000000')).toBe(false);
-		expect(await engine.startShift(engine.guards[0].id, '246813')).toBe(true);
+		expect(await engine.startShift(engine.guards[0].id, '000000')).toMatchObject({ ok: false, reason: 'pin' });
+		expect(await engine.startShift(engine.guards[0].id, '246813')).toMatchObject({ ok: true, offline: true });
 		online = true;
 	});
 
@@ -197,9 +206,9 @@ describe('guard console engine', () => {
 	it('F16: locks shift sign-in after repeated wrong PINs, even after a reload', async () => {
 		await resetLocks();
 		const g = engine.guards[0].id;
-		for (let i = 0; i < 5; i++) expect(await engine.startShift(g, '999999')).toBe(false);
+		for (let i = 0; i < 5; i++) expect((await engine.startShift(g, '999999')).ok).toBe(false);
 		expect(engine.pinLockedFor()).toBeGreaterThan(0);
-		expect(await engine.startShift(g, '246813')).toBe(false); // right PIN, still locked
+		expect(await engine.startShift(g, '246813')).toMatchObject({ ok: false, reason: 'locked' }); // right PIN, still locked
 		expect((await new GateEngine().load()).pinLockedFor()).toBeGreaterThan(0);
 	});
 

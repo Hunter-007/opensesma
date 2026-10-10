@@ -12,6 +12,8 @@ import type { DeviceConfig, EstateInfo, GuardSession, LocalEvent, LocalPass, Syn
  * renders state. Every decision here works with zero network.
  */
 
+export type ShiftResult = { ok: true; offline: boolean } | { ok: false; reason: 'pin' | 'locked' | 'on_duty_elsewhere' | 'removed' | 'error'; error: string };
+
 export interface CheckResult {
 	allow: boolean;
 	reason?: string;
@@ -53,6 +55,8 @@ export class GateEngine {
 	guards: SyncGuard[] = [];
 	bans: SyncBan[] = [];
 	guard: GuardSession | null = null;
+	/** Why the last shift was ended by the server (shown on the shift screen). */
+	shiftNotice: string | null = null;
 	private codeFailures: number[] = [];
 	private pinFailures: number[] = [];
 	private syncing: Promise<SyncOutcome> | null = null;
@@ -70,6 +74,11 @@ export class GateEngine {
 		this.guards = (await store.kv.get<SyncGuard[]>('guards')) ?? [];
 		this.bans = (await store.kv.get<SyncBan[]>('bans')) ?? [];
 		this.guard = (await store.kv.get<GuardSession>('guard')) ?? null;
+		if (this.guard && !this.guard.shiftId) {
+			// Shift started before shifts were tracked: give it an id; the next sync registers it.
+			this.guard = { ...this.guard, shiftId: uuidv7(), offline: true };
+			await store.kv.set('guard', this.guard);
+		}
 		this.codeFailures = (await store.kv.get<number[]>('codeFailures')) ?? [];
 		this.pinFailures = (await store.kv.get<number[]>('pinFailures')) ?? [];
 		return this;
@@ -115,24 +124,89 @@ export class GateEngine {
 		return lockRemaining(this.pinFailures, now, [PIN_LOCK]);
 	}
 
-	async startShift(guardId: string, pin: string): Promise<boolean> {
+	/**
+	 * PIN checked on the phone (works offline). Then, if there's a connection,
+	 * the server must agree: a guard can be on duty at only one gate at a time.
+	 * Offline, the shift starts anyway and the next sync settles any clash.
+	 */
+	async startShift(guardId: string, pin: string): Promise<ShiftResult> {
 		const now = this.now();
-		if (this.pinLockedFor(now)) return false;
+		if (this.pinLockedFor(now)) return { ok: false, reason: 'locked', error: 'Too many wrong PINs. Wait a few minutes.' };
 		const g = this.guards.find((x) => x.id === guardId);
 		if (!g || !(await verifyPin(pin, g.pinHash))) {
 			this.pinFailures = [...this.pinFailures.filter((t) => now - t < PIN_LOCK.windowMs), now];
 			await store.kv.set('pinFailures', this.pinFailures);
-			return false;
+			return { ok: false, reason: 'pin', error: 'Wrong PIN. Try again.' };
 		}
 		this.pinFailures = [];
 		await store.kv.set('pinFailures', this.pinFailures);
-		this.guard = { id: g.id, name: g.name, since: Date.now() };
+
+		// One guard per phone: hand over from whoever was on duty here.
+		if (this.guard) await this.endShift();
+
+		const shiftId = uuidv7();
+		const since = Date.now();
+		let offline = true;
+		const online = (globalThis.navigator as Navigator | undefined)?.onLine !== false;
+		if (online && this.config) {
+			try {
+				const res = await this.authed('/api/gate/shift', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ action: 'start', shiftId, guardId: g.id, startedAt: since })
+				});
+				if (res.status === 401) {
+					await this.removed();
+					return { ok: false, reason: 'removed', error: 'This gate phone was removed. Ask the estate manager to set it up again.' };
+				}
+				const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+				if (res.status === 409) return { ok: false, reason: 'on_duty_elsewhere', error: body.error ?? 'This guard is already on duty at another gate.' };
+				if (res.status === 404) return { ok: false, reason: 'error', error: body.error ?? 'This guard is not on the estate’s guard list. Tap Sync and try again.' };
+				if (res.ok) offline = false;
+			} catch {
+				/* no connection: start offline */
+			}
+		}
+		this.guard = { id: g.id, name: g.name, since, shiftId, offline };
+		this.shiftNotice = null;
 		await store.kv.set('guard', this.guard);
-		return true;
+		return { ok: true, offline };
 	}
 
+	/** Guard taps "End shift". The server is told now, or on the next sync if offline. */
 	async endShift() {
+		const shiftId = this.guard?.shiftId;
 		this.guard = null;
+		await store.kv.del('guard');
+		if (!shiftId) return;
+		const queue = (await store.kv.get<string[]>('pendingShiftEnds')) ?? [];
+		await store.kv.set('pendingShiftEnds', [...queue, shiftId]);
+		await this.flushShiftEnds().catch(() => {});
+	}
+
+	private async flushShiftEnds() {
+		const queue = (await store.kv.get<string[]>('pendingShiftEnds')) ?? [];
+		if (!queue.length || !this.config) return;
+		const left: string[] = [];
+		for (const shiftId of queue) {
+			try {
+				const res = await this.authed('/api/gate/shift', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ action: 'end', shiftId })
+				});
+				if (!res.ok && res.status !== 401) left.push(shiftId);
+			} catch {
+				left.push(shiftId);
+			}
+		}
+		await store.kv.set('pendingShiftEnds', left);
+	}
+
+	/** The server ended this shift (on duty elsewhere, ended by the manager…). No need to tell it back. */
+	private async shiftEndedByServer(message: string) {
+		this.guard = null;
+		this.shiftNotice = message;
 		await store.kv.del('guard');
 	}
 
@@ -184,8 +258,17 @@ export class GateEngine {
 				if (accepted.length < pending.length) break;
 			}
 
-			// 2. Download
+			// 2. Shifts ended while offline
+			await this.flushShiftEnds();
+
+			// 3. Download (reporting the running shift, so the server can keep it alive or end it)
 			const q = new URLSearchParams();
+			const reported = this.guard?.shiftId ? this.guard : null;
+			if (reported) {
+				q.set('shift', reported.shiftId!);
+				q.set('guard', reported.id);
+				q.set('shiftStart', String(reported.since));
+			}
 			if (this.meta.cursor) q.set('since', this.meta.cursor);
 			if (this.meta.unitsHash) q.set('u', this.meta.unitsHash);
 			if (this.meta.guardsHash) q.set('g', this.meta.guardsHash);
@@ -203,6 +286,14 @@ export class GateEngine {
 				await store.kv.set('config', this.config);
 			}
 			await this.apply(data);
+			const current = this.guard;
+			if (reported && current && current.shiftId === reported.shiftId) {
+				if (data.shift && !data.shift.active) await this.shiftEndedByServer(data.shift.message);
+				else if (data.shift?.active && current.offline) {
+					this.guard = { ...current, offline: false };
+					await store.kv.set('guard', this.guard);
+				}
+			}
 			return { ok: true, changed: data.passes.length };
 		} catch (err) {
 			return { ok: false, error: err instanceof Error ? err.message : 'offline' };

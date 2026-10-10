@@ -32,6 +32,7 @@ request contradicts one, say so and ask; don't silently override.
 | Pass delivery | Resident taps **WhatsApp** (wa.me) or **Text message** (sms: link) on the pass screen; message pre-filled with code + short link `/v/<pass id>` |
 | Sign-in | **One-time sign-in links**, not SMS codes. Manager sends them from People → "Sign-in link"; house/household invites sign the person in on Join. Managers recover via the private setup link |
 | Guards | Never sign in to the web app. Gate phone is enrolled with a setup code; each guard starts a shift with a 6-digit PIN |
+| One gate at a time | A guard can be on duty at only one gate phone at a time (10 Oct 2026). Refused online; if started offline, the clash is ended on the next sync and the manager alerted. Manager can end stuck shifts on Gate phones; silent shifts close after 14 h |
 | SMS code login | Kept in code; switches back on automatically if `SMS_DRIVER=termii` + `TERMII_API_KEY` are set |
 | Don't build | A home-made SMS sender (Android SIM gateway, etc.): grey route, SIM bans, DND, NCC licensing. Prefer web push / WhatsApp share / links |
 

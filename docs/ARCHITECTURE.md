@@ -30,6 +30,15 @@
 
 **Staleness.** QR passes verify by signature even if created after the last sync. Codes need the local cache. If the phone hasn't synced for `staleSyncHours` (default 6), allowed results carry a "cancellations may be missing" warning and unknown codes steer the guard to Walk-in.
 
+## Guard shifts (one gate at a time)
+
+A guard can be on duty at only one gate phone at a time (`src/lib/server/shifts.ts`, table `guard_shifts`). The gate phone makes the shift id (UUIDv7) when the guard enters their PIN:
+
+- **Online:** the phone asks `POST /api/gate/shift` first. If the guard is on duty at another phone the server refuses (409) and the phone shows where and since when.
+- **Offline:** the shift starts anyway, so the gate keeps working. Each sync reports the running shift; the server registers it, or — if it clashes — tells the phone to end it, records `shift.conflict` and alerts the manager.
+- **Ending:** "End shift" is sent at once, or queued and sent on the next sync. A new guard on the same phone takes over. The manager can end a stuck shift from Gate phones; a shift whose phone hasn't synced for 14 hours closes on its own. Removing the guard or the phone ends their shifts.
+- A partial unique index (one open shift per guard) stops two phones racing.
+
 ## Walk-ins (no phone calls)
 
 `POST /api/gate/walkins` → web push to every active household member with *Let in / Decline* buttons. The gate polls every 3 s. If SMS is configured, the server texts the household a single-use link (`/w/<token>`) when polled after 45 s with no answer — so no cron is needed on serverless; without SMS this step is skipped. After 3 minutes the server returns the household's numbers so the guard can tap to call; requests expire after 15 minutes. The first answer wins; later answers see who decided. Approval creates a one-time pass the gate verifies like any other.

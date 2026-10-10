@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { relativeTime } from '$lib/shared/format';
+	import { formatTime, relativeTime } from '$lib/shared/format';
 	let { data, form } = $props();
 	const f = $derived(form as Record<string, unknown> | null);
 </script>
@@ -12,6 +12,7 @@
 	<p class="muted">
 		Any Android phone with Chrome works. On the gate phone, open <strong>{data.gateUrl}</strong>, tap “Add to Home screen”, and enter the setup code below. Codes work once and expire in 24 hours.
 	</p>
+	<p class="small muted">A guard can be on duty at only one gate at a time. If a guard is stuck on duty at a phone (left without ending the shift, or the phone is off), end the shift here.</p>
 	{#if f?.ok}<p class="alert ok">{f.ok}</p>{/if}
 	{#if f?.error}<p class="alert error" role="alert">{f.error}</p>{/if}
 
@@ -31,11 +32,19 @@
 							<div class="small muted">Expires {relativeTime(d.enrollExpiresAt ?? 0)}</div>
 						{:else if d.enrolled}
 							<div class="small muted">Last synced {d.lastSyncAt ? relativeTime(d.lastSyncAt) : 'never'}</div>
+							{#if d.onDuty}
+								<div class="duty">On duty: <strong>{d.onDuty.guardName}</strong> since {formatTime(d.onDuty.startedAt, data.timeZone)}</div>
+							{:else}
+								<div class="small muted">No guard on duty</div>
+							{/if}
 						{:else}
 							<div class="small muted">Setup code expired — make a new one.</div>
 						{/if}
 					</div>
 					<div class="row">
+						{#if d.onDuty}
+							<form method="POST" action="?/endShift" use:enhance><input type="hidden" name="shiftId" value={d.onDuty.id} /><button class="btn sm">End {d.onDuty.guardName.split(' ')[0]}'s shift</button></form>
+						{/if}
 						<form method="POST" action="?/reenroll" use:enhance><input type="hidden" name="deviceId" value={d.id} /><button class="btn sm">{d.enrolled ? 'Replace phone' : 'New code'}</button></form>
 						<form method="POST" action="?/revoke" use:enhance><input type="hidden" name="deviceId" value={d.id} /><button class="btn sm ghost danger">Remove</button></form>
 					</div>
@@ -58,6 +67,10 @@
 </div>
 
 <style>
+	.duty {
+		margin-top: 4px;
+		color: var(--allow, #1f8a4c);
+	}
 	.gname {
 		max-width: 240px;
 		min-height: 40px;

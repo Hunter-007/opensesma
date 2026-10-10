@@ -3,6 +3,7 @@ import { attempt, requireAdmin, str } from '$lib/server/guards';
 import { createDevice, regenerateEnrollCode, revokeDevice } from '$lib/server/gate';
 import { getDb, schema } from '$lib/server/db';
 import { config } from '$lib/server/config';
+import { endShiftAsManager, openShifts } from '$lib/server/shifts';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
@@ -10,7 +11,9 @@ export const load: PageServerLoad = async (event) => {
 	const db = await getDb();
 	const gates = await db.select().from(schema.gates).where(eq(schema.gates.estateId, a.estateId));
 	const devices = await db.select().from(schema.devices).where(eq(schema.devices.estateId, a.estateId));
+	const shifts = await openShifts(a.estateId);
 	return {
+		timeZone: a.estate.timeZone,
 		gateUrl: `${config.publicUrl}/gate`,
 		gates: gates.map((g) => ({ id: g.id, name: g.name })),
 		devices: devices
@@ -22,7 +25,10 @@ export const load: PageServerLoad = async (event) => {
 				enrollCode: d.enrollCode && d.enrollExpiresAt && d.enrollExpiresAt > new Date() ? d.enrollCode : null,
 				enrollExpiresAt: d.enrollExpiresAt?.getTime() ?? null,
 				enrolled: !!d.enrolledAt,
-				lastSyncAt: d.lastSyncAt?.getTime() ?? null
+				lastSyncAt: d.lastSyncAt?.getTime() ?? null,
+				onDuty: shifts
+					.filter((s) => s.deviceId === d.id)
+					.map((s) => ({ id: s.id, guardName: s.guardName, startedAt: s.startedAt.getTime(), lastSeenAt: s.lastSeenAt.getTime() }))[0] ?? null
 			}))
 	};
 };
@@ -42,6 +48,14 @@ export const actions: Actions = {
 		return attempt(async () => {
 			await regenerateEnrollCode(a.estateId, a.user.id, str(fd, 'deviceId'));
 			return { ok: 'New setup code made. The old phone is signed out.' };
+		});
+	},
+	endShift: async (event) => {
+		const a = requireAdmin(event);
+		const fd = await event.request.formData();
+		return attempt(async () => {
+			await endShiftAsManager(a.estateId, a.user.id, str(fd, 'shiftId'));
+			return { ok: 'Shift ended. The guard can now start a shift at another gate; the phone signs them out on its next sync.' };
 		});
 	},
 	revoke: async (event) => {

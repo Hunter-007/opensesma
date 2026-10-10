@@ -23,12 +23,12 @@ design. Product rules live in the `opensesma-product` skill; security rules in
 | Path | What |
 | --- | --- |
 | `src/lib/shared/` | Code that runs on server **and** gate phone: `evaluate.ts` (the one decision function), `passToken.ts`, `encoding.ts` (8-digit codes), `types.ts` (pass types, `PER_DAY_CAP`, `DEFAULT_SETTINGS`, deny messages), `sync.ts`, `pin.ts`, `redirect.ts` (`safeNext`) |
-| `src/lib/server/` | `auth.ts` (OTP + sessions), `links.ts` (one-time sign-in links, invite sign-in), `estates.ts` (estates, houses, invites, staff, demo data), `passes.ts` (create/revoke, share message, `/v/` short link), `gate.ts` (device enrol/auth/rotation, sync, event ingest + server re-check, walk-ins), `admin.ts` (log, CSV, reports), `push.ts`, `sms.ts`, `crypto.ts`, `config.ts`, `guards.ts` (`requireUser/Resident/Admin`, `attempt`), `util.ts` (`AppError`, `audit`, `rateLimit`), `db/schema.ts` |
+| `src/lib/server/` | `auth.ts` (OTP + sessions), `links.ts` (one-time sign-in links, invite sign-in), `shifts.ts` (one gate at a time per guard), `estates.ts` (estates, houses, invites, staff, demo data), `passes.ts` (create/revoke, share message, `/v/` short link), `gate.ts` (device enrol/auth/rotation, sync, event ingest + server re-check, walk-ins), `admin.ts` (log, CSV, reports), `push.ts`, `sms.ts`, `crypto.ts`, `config.ts`, `guards.ts` (`requireUser/Resident/Admin`, `attempt`), `util.ts` (`AppError`, `audit`, `rateLimit`), `db/schema.ts` |
 | `src/lib/client/gate/` | `engine.ts` (offline gate: enrol, PIN shifts, sync with server-anchored clock, lockouts, event queue), `store.ts` (IndexedDB) |
 | `src/lib/components/` | `ShareButtons.svelte` (WhatsApp / Text / Copy), Keypad, Scanner, PassRow, PushPrompt, WalkinDecision, ScheduleInput |
 | `src/routes/` | `app/` resident, `admin/` manager, `gate/` guard (prerendered, offline), `p/[token]` visitor page (no JS), `v/[id]` short link → `/p/`, `l/[token]` sign-in link, `join/[code]` invite, `setup/` (token-gated), `api/gate/*`, `api/health`, `api/cron/maintenance` |
 | `scripts/` | `seed.ts`, `migrate.ts`, `sync-migrations.ts`, `vapid.ts`, `rotate-secret.ts` |
-| `tests/` | `passEngine`, `flows`, `gateEngine`, `security`, `signInLinks`, `migrations`, `netlifyDatabase` |
+| `tests/` | `passEngine`, `flows`, `gateEngine`, `security`, `signInLinks`, `guardShifts`, `migrations`, `netlifyDatabase` |
 
 ## Working rules
 
@@ -46,14 +46,14 @@ design. Product rules live in the `opensesma-product` skill; security rules in
 
 - Edit `src/lib/server/db/schema.ts`, then `npm run db:generate -- --name <snake_name>`; this writes `drizzle/NNNN_*.sql` and mirrors it to `netlify/database/migrations/`. Rename random names in both folders **and** `drizzle/meta/_journal.json` before committing.
 - Netlify applies `netlify/database/migrations/` just before a deploy is published (and snapshots the DB). **Never edit or delete a deployed migration**; never run `drizzle-kit push/migrate` against Netlify. Prefer additive changes (new tables, nullable columns).
-- Applied in production: `0000_init`, `0001_security_hardening`, `0002_sign_in_links`.
+- Applied in production: `0000_init`, `0001_security_hardening`, `0002_sign_in_links`, `0003_guard_shifts`.
 
 ## Run, test, verify
 
 ```bash
 npm install
 npm run db:seed && npm run dev          # http://localhost:5173 — OTPs on screen, SMS at /dev/outbox
-npm test                                 # vitest (108 tests at 9 Oct 2026)
+npm test                                 # vitest (120 tests at 11 Oct 2026)
 npm run check                            # svelte-kit sync + svelte-check: must be 0 errors, 0 warnings
 ADAPTER=node npm run build && node build # production server locally
 ```

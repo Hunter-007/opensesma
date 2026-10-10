@@ -36,6 +36,10 @@ export interface GuardSession {
 	id: string;
 	name: string;
 	since: number;
+	/** Made on the phone, so a shift started offline keeps its id when reported later. */
+	shiftId?: string;
+	/** Started without the server's OK (no connection); checked on the next sync. */
+	offline?: boolean;
 }
 export interface LocalEvent {
 	id: string;
