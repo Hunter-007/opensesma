@@ -178,6 +178,20 @@ describe('gate phone: online and offline', () => {
 		await expect(shifts.startShift(backDevice, { shiftId: uuidv7(), guardUserId: guardId })).rejects.toMatchObject({ code: 'on_duty_elsewhere' });
 	});
 
+	it('a refused hand-over leaves the guard already on duty on this phone', async () => {
+		// Sunday is on duty here (from the test above); Ade is on duty at the back gate.
+		const sundayShift = engine.guard!.shiftId!;
+		const adeId = (await estates.addStaffAccount({ estateId, actorUserId: adminId, phone: '08060000009', name: 'Ade Bakare', role: 'guard', pin: '246813' })).id;
+		await engine.sync(); // the phone learns Ade's PIN
+		const adeBack = await shifts.startShift(backDevice, { shiftId: uuidv7(), guardUserId: adeId });
+		const r = await engine.startShift(adeId, '246813');
+		expect(r).toMatchObject({ ok: false, reason: 'on_duty_elsewhere' });
+		expect(engine.guard).toMatchObject({ id: guardId, shiftId: sundayShift });
+		const [row] = await (await getDb()).select().from(schema.guardShifts).where(eq(schema.guardShifts.id, sundayShift));
+		expect(row.endedAt).toBeNull();
+		await shifts.endShift(backDevice, adeBack.id);
+	});
+
 	it('ending the shift offline frees the guard once the phone reconnects', async () => {
 		online = false;
 		await engine.endShift();

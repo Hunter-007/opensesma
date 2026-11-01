@@ -96,31 +96,35 @@ export async function startShift(device: GateDevice, input: { shiftId: string; g
 	if (open && open.shift.deviceId !== device.id)
 		throw new AppError(elsewhereMessage(guard.name, open.gateName, open.shift.startedAt, await estateTz(device.estateId)), 409, 'on_duty_elsewhere');
 
-	// One guard at a time per phone: whoever was on duty here hands over.
-	await db
-		.update(schema.guardShifts)
-		.set({ endedAt: now, endReason: 'replaced' })
-		.where(and(eq(schema.guardShifts.deviceId, device.id), isNull(schema.guardShifts.endedAt)));
-
 	// Never trust a phone's clock for more than a day back, or for the future.
 	const claimed = input.startedAt ? new Date(input.startedAt) : now;
 	const startedAt = claimed > now || now.getTime() - claimed.getTime() > 86_400_000 ? now : claimed;
+	let shift: typeof schema.guardShifts.$inferSelect;
 	try {
-		const [shift] = await db
-			.insert(schema.guardShifts)
-			.values({
-				id: input.shiftId,
-				estateId: device.estateId,
-				guardUserId: input.guardUserId,
-				deviceId: device.id,
-				gateId: device.gateId,
-				startedAt,
-				lastSeenAt: now,
-				startedOffline: !!input.offline
-			})
-			.returning();
-		await audit(db, { estateId: device.estateId, action: 'shift.start', entity: 'user', entityId: input.guardUserId, data: { deviceId: device.id, gateId: device.gateId, offline: !!input.offline } });
-		return shift;
+		// One transaction, so a refused start never ends the shift of whoever is on
+		// duty on this phone. (The unique-violation catch is outside on purpose: a
+		// failed statement aborts the transaction in Postgres.)
+		shift = await db.transaction(async (tx) => {
+			// One guard at a time per phone: whoever was on duty here hands over.
+			await tx
+				.update(schema.guardShifts)
+				.set({ endedAt: now, endReason: 'replaced' })
+				.where(and(eq(schema.guardShifts.deviceId, device.id), isNull(schema.guardShifts.endedAt)));
+			const [row] = await tx
+				.insert(schema.guardShifts)
+				.values({
+					id: input.shiftId,
+					estateId: device.estateId,
+					guardUserId: input.guardUserId,
+					deviceId: device.id,
+					gateId: device.gateId,
+					startedAt,
+					lastSeenAt: now,
+					startedOffline: !!input.offline
+				})
+				.returning();
+			return row;
+		});
 	} catch (e) {
 		if (!isUniqueViolation(e)) throw e;
 		// Another phone won the race a moment ago.
@@ -131,6 +135,8 @@ export async function startShift(device: GateDevice, input: { shiftId: string; g
 			'on_duty_elsewhere'
 		);
 	}
+	await audit(db, { estateId: device.estateId, action: 'shift.start', entity: 'user', entityId: input.guardUserId, data: { deviceId: device.id, gateId: device.gateId, offline: !!input.offline } });
+	return shift;
 }
 
 export async function endShift(device: GateDevice, shiftId: string) {

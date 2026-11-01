@@ -141,9 +141,6 @@ export class GateEngine {
 		this.pinFailures = [];
 		await store.kv.set('pinFailures', this.pinFailures);
 
-		// One guard per phone: hand over from whoever was on duty here.
-		if (this.guard) await this.endShift();
-
 		const shiftId = uuidv7();
 		const since = Date.now();
 		let offline = true;
@@ -167,6 +164,9 @@ export class GateEngine {
 				/* no connection: start offline */
 			}
 		}
+		// Allowed: hand over from whoever was on duty on this phone. Only now, so a
+		// refused start leaves the current guard on duty.
+		if (this.guard) await this.endShift();
 		this.guard = { id: g.id, name: g.name, since, shiftId, offline };
 		this.shiftNotice = null;
 		await store.kv.set('guard', this.guard);
